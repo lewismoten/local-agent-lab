@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+*.tsbuildinfo
+# Private story data and uploaded reference assets
+workspace/
