@@ -1,0 +1,6 @@
+.folder-hint{color:#805b2f!important;background:#fff5df;border:1px solid #eddab2;border-radius:6px;padding:9px 10px;margin:12px 0 0!important;font-size:11px;line-height:1.5}
+.sidebar{overflow-y:auto;overscroll-behavior:contain}
+.sidebar-bottom{flex-shrink:0}
+.sidebar .nav-item.sub-item{padding-left:29px;font-size:12px}
+@media(max-width:720px){.sidebar{overflow-y:visible}.sidebar-bottom{display:block;margin-top:10px}.sidebar-bottom .folder-card{padding:10px 12px}.sidebar-bottom .folder-card p{margin:5px 0}.sidebar-bottom .help-link{padding:8px 4px 0}}
+@media(max-width:720px){.sidebar .nav-item.sub-item{padding-left:10px}}

@@ -1,8 +1,11 @@
-import { Project, parseProjectFiles, projectFiles } from './model';
+import { parseProjectFiles, projectFiles, type Project } from './model.ts';
 
 const DB = 'rivers-of-memory';
 const STORE = 'handles';
-export function saveCache(project: Project) { localStorage.setItem('story-project', JSON.stringify(project)); }
+export function saveCache(project: Project): boolean {
+  try { localStorage.setItem('story-project', JSON.stringify(project)); return true; }
+  catch { return false; }
+}
 export function loadCache(): Project | null {
   try {
     const text = localStorage.getItem('story-project');
@@ -38,6 +41,15 @@ export async function loadHandle(): Promise<FileSystemDirectoryHandle | null> {
   db.close();
   return value;
 }
+export async function ensureWritableFolder(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const access = handle as FileSystemDirectoryHandle & {
+    queryPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>;
+    requestPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>;
+  };
+  if (!access.queryPermission) return true;
+  if (await access.queryPermission({ mode: 'readwrite' }) === 'granted') return true;
+  return await access.requestPermission?.({ mode: 'readwrite' }) === 'granted';
+}
 declare global {
   interface Window { showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle> }
 }
@@ -68,7 +80,7 @@ export async function writeProject(root: FileSystemDirectoryHandle, project: Pro
   const old = await readTree(root);
   for (const path of Object.keys(old)) {
     if (path in files) continue;
-    if (!/^(world\/(characters|notes|influences)\/|books\/|sources\/)/.test(path)) continue;
+    if (!/^(world\/(characters|notes|influences|reviews)\/|books\/|sources\/)/.test(path)) continue;
     const parts = path.split('/');
     const name = parts.pop()!;
     let dir = root;
@@ -85,7 +97,14 @@ export async function readBlob(root: FileSystemDirectoryHandle, path: string): P
   const name = parts.pop()!;
   let dir = root;
   for (const part of parts) dir = await dir.getDirectoryHandle(part);
-  return (await dir.getFileHandle(name)).getFile();
+  try { return await (await dir.getFileHandle(name)).getFile(); }
+  catch (error) {
+    if (path.startsWith('models/') && parts.length === 1 && name.toLowerCase().endsWith('.gguf') && error instanceof DOMException && error.name === 'NotFoundError') {
+      const { modelStorageDirectory } = await import('./modelFolders.ts');
+      return (await (await modelStorageDirectory(root, name)).getFileHandle(name)).getFile();
+    }
+    throw error;
+  }
 }
 export function downloadProject(project: Project) {
   const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });

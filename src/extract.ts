@@ -9,7 +9,17 @@ export async function extractText(file: File): Promise<string> {
     const pages: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const content = await (await pdf.getPage(i)).getTextContent();
-      pages.push(content.items.map(item => 'str' in item ? item.str : '').join(' '));
+      let pageText = '';
+      let previousY: number | undefined;
+      for (const item of content.items) {
+        if (!('str' in item)) continue;
+        const y = item.transform[5];
+        const newLine = previousY !== undefined && Math.abs(y - previousY) > 3;
+        pageText += (newLine ? '\n' : pageText && !pageText.endsWith('\n') ? ' ' : '') + item.str;
+        if (item.hasEOL) pageText += '\n';
+        previousY = y;
+      }
+      pages.push(pageText);
     }
     return pages.join('\n\n');
   }

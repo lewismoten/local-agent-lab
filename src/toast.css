@@ -1,0 +1,7 @@
+.toast-stack{position:fixed;right:24px;bottom:24px;z-index:40;display:grid;gap:8px;max-width:min(420px,calc(100vw - 32px));width:max-content}
+.toast-stack .toast{position:static;max-width:100%;width:100%;justify-content:flex-start}
+.toast-stack .toast span{flex:1;line-height:1.4}
+.toast-stack .toast button{margin-left:auto}
+.toast-stack .toast-error{background:#a83d37}
+.toast-stack .toast-info{background:#456477}
+@media(max-width:720px){.toast-stack{right:16px;bottom:16px}}

@@ -3,5 +3,11 @@ dist/
 .DS_Store
 *.local
 *.tsbuildinfo
+__pycache__/
+*.pyc
 # Private story data and uploaded reference assets
 workspace/
+# Keep local model weights off GitHub, even when copied into this checkout.
+models/
+/engines/
+*.gguf

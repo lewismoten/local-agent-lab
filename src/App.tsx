@@ -1,19 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ChevronRight, CircleHelp, CloudUpload, Download, FileText, FolderOpen, Globe2, Layers3, LibraryBig, Plus, RefreshCw, Settings2, Sparkles, Trash2, Users, WandSparkles, X } from 'lucide-react';
-import { generate, generateImage, parseJson, type AIConfig } from './ai';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { BookOpen, ChevronRight, CircleHelp, CloudUpload, Download, FileText, FolderOpen, Globe2, Layers3, LibraryBig, MessageCircle, Plus, RefreshCw, Settings2, Sparkles, Trash2, Users, WandSparkles, X } from 'lucide-react';
+import { DEFAULT_PROFILES, generate, parseJson, type AIConfig } from './ai';
+import { generateImage, imageConfigured, IMAGE_PRESETS, type ImageConfig } from './imageGeneration';
+import { getImageSession, isImageReady, subscribeImageSession } from './imageSession';
+import ImageGeneratorSettings from './ImageGeneratorSettings';
+import { setBrowserImageFolder } from './browserImage';
+import { browserImageAssetsManager } from './browserImageAssets';
+import { browserThinkingMode } from './browserThinking';
+import ChatPanel from './ChatPanel';
+import { useConfirmDialog } from './ConfirmDialog';
+import DownloadIndicator from './DownloadIndicator';
+import { modelDownloadManager, resumeQueuedModels, resumeRecoverableModel, verifyRecoverableModelFolder } from './modelDownloadSession';
+import ToastViewport from './ToastViewport';
+import TooltipLayer from './TooltipLayer';
+import ProviderSettings from './ProviderSettings';
 import { extractText } from './extract';
-import { makeBook, makeChapter, markAllBooks, markChapters, newProject, now, reconcileChanges, uid, type Book, type Chapter, type Character, type Format, type Influence, type Project, type Source, type Stage, type WorldNote } from './model';
+import { acceptSourceFindings, emptyStoryGraph, makeBook, makeChapter, markAllBooks, markChapters, newProject, now, reconcileChanges, uid, type Book, type Chapter, type Character, type ContinuityReport, type Format, type Influence, type Project, type Source, type Stage, type StoryGraph, type WorldNote } from './model';
+import SourceAnalysisPanel from './SourceAnalysisPanel';
+import ModelTestDialog from './ModelTestDialog';
+import { useRoute, type RouteView } from './router';
+import { getModelSession, isModelReady, modelFingerprint, subscribeModelSession } from './modelSession';
 import { downloadProject, loadCache, loadHandle, readBlob, readProject, saveCache, saveHandle, writeBlob, writeProject } from './storage';
+import { showCompletionToast, showToast } from './toastStore';
+import './folder.css';
 
-type View = 'overview' | 'books' | 'characters' | 'world' | 'sources' | 'influences' | 'settings';
+type View = RouteView;
 const formats: Format[] = ['Children’s book', 'Children’s series', 'Short story', 'Novel', 'Trilogy', 'Series'];
 const stages: { id: Stage; label: string; help: string }[] = [
   { id: 'outline', label: 'Outline', help: 'The chapter’s beats and turning points' },
   { id: 'summary', label: 'Summary', help: 'A scene-by-scene account of what happens' },
   { id: 'draft', label: 'Full text', help: 'The prose of the chapter' },
 ];
-const icons = { overview: Layers3, books: BookOpen, characters: Users, world: Globe2, sources: FileText, influences: LibraryBig, settings: Settings2 };
-const labels = { overview: 'Overview', books: 'Books & chapters', characters: 'Characters', world: 'World bible', sources: 'Source documents', influences: 'Influences', settings: 'Settings & AI' };
+const icons = { chat: MessageCircle, overview: Layers3, books: BookOpen, characters: Users, world: Globe2, sources: FileText, influences: LibraryBig, settings: Settings2, 'story-profile': BookOpen, 'ai-profiles': Sparkles, 'project-files': FolderOpen };
+const labels = { chat: 'Writing room', overview: 'Overview', books: 'Books & chapters', characters: 'Characters', world: 'World bible', sources: 'Source documents', influences: 'Influences', settings: 'Settings', 'story-profile': 'Story profile', 'ai-profiles': 'AI profiles', 'project-files': 'Project files' };
 const blankCharacter = (): Character => ({ id: uid(), updatedAt: now(), name: 'New character', role: '', background: '', appearance: '', personality: '', arc: '', relationships: [], imagePaths: [] });
 const blankWorld = (): WorldNote => ({ id: uid(), updatedAt: now(), title: 'New world note', category: 'Place', details: '' });
 const blankInfluence = (): Influence => ({ id: uid(), updatedAt: now(), title: 'New influence', medium: 'Book', why: '', factualSummary: '', sourceUrl: '', avoid: '' });
@@ -29,44 +48,146 @@ function Empty({ title, description, action }: { title: string; description: str
 }
 
 export default function App() {
-  const [project, setProject] = useState<Project>(() => loadCache() || newProject());
-  const [view, setView] = useState<View>('overview');
-  const [selectedBook, setSelectedBook] = useState('');
-  const [selectedChapter, setSelectedChapter] = useState('');
-  const [selectedCharacter, setSelectedCharacter] = useState('');
-  const [selectedWorld, setSelectedWorld] = useState('');
-  const [selectedInfluence, setSelectedInfluence] = useState('');
-  const [selectedSource, setSelectedSource] = useState('');
+  const confirmAction = useConfirmDialog();
+  const [project, setProject] = useState<Project>(() => { const cached = loadCache(); return cached ? { ...cached, reviews: cached.reviews || [], storyGraph: cached.storyGraph || emptyStoryGraph() } : newProject(); });
+  const { view, dialog, intent, navigate: setView, openDialog, closeDialog } = useRoute();
+  const modelSession = useSyncExternalStore(subscribeModelSession, getModelSession);
+  useSyncExternalStore(subscribeImageSession, getImageSession);
+  const [selectedBook, setSelectedBook] = useState(() => sessionStorage.getItem('selected-book') || '');
+  const [selectedChapter, setSelectedChapter] = useState(() => sessionStorage.getItem('selected-chapter') || '');
+  const [selectedCharacter, setSelectedCharacter] = useState(() => sessionStorage.getItem('selected-character') || '');
+  const [selectedWorld, setSelectedWorld] = useState(() => sessionStorage.getItem('selected-world') || '');
+  const [selectedInfluence, setSelectedInfluence] = useState(() => sessionStorage.getItem('selected-influence') || '');
+  const [selectedSource, setSelectedSource] = useState(() => sessionStorage.getItem('selected-source') || '');
   const [folder, setFolder] = useState<FileSystemDirectoryHandle | null>(null);
   const [folderName, setFolderName] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState('');
-  const [notice, setNotice] = useState('');
+  const [folderHint, setFolderHint] = useState('');
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
-  const [config, setConfig] = useState<AIConfig>(() => ({
-    provider: (localStorage.getItem('ai-provider') as AIConfig['provider']) || 'ollama',
-    model: localStorage.getItem('ai-model') || 'llama3.2',
-    endpoint: localStorage.getItem('ai-endpoint') || 'http://localhost:11434',
-    apiKey: '',
-  }));
-  const [showHelp, setShowHelp] = useState(false);
+  const [profiles, setProfiles] = useState<AIConfig[]>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('ai-profiles') || 'null') as AIConfig[] | null;
+      return stored?.length ? [...stored.map(x => x.provider === 'browser'
+        ? { ...x, browserThinkingMode: x.browserThinkingMode ?? browserThinkingMode(x), apiKey: '' }
+        : { ...x, apiKey: '' }), ...DEFAULT_PROFILES.filter(preset => !stored.some(x => x.id === preset.id))] : DEFAULT_PROFILES;
+    } catch { return DEFAULT_PROFILES; }
+  });
+  const [selectedProfileId, setSelectedProfileId] = useState(() => localStorage.getItem('ai-selected-profile') || 'browser');
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [imageSettings, setImageSettings] = useState<ImageConfig>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('image-generator') || '{}') as Partial<ImageConfig>;
+      return saved.preset && saved.preset in IMAGE_PRESETS ? { ...IMAGE_PRESETS[saved.preset], ...saved, apiKey: '' } : IMAGE_PRESETS.none;
+    }
+    catch { return IMAGE_PRESETS.none; }
+  });
+  const [imageSettingsFolder, setImageSettingsFolder] = useState<FileSystemDirectoryHandle | null>(null);
+  useEffect(() => { localStorage.setItem('image-generator', JSON.stringify({ ...imageSettings, apiKey: '' })); }, [imageSettings]);
+  useEffect(() => {
+    let active = true;
+    setImageSettingsFolder(null);
+    if (folder) {
+      void readBlob(folder, 'settings/image-generator.json').then(async file => {
+        const saved = JSON.parse(await file.text()) as ImageConfig;
+        if (active && saved.preset in IMAGE_PRESETS) setImageSettings({ ...IMAGE_PRESETS[saved.preset], ...saved, apiKey: '' });
+      }).catch(() => {}).finally(() => { if (active) setImageSettingsFolder(folder); });
+    }
+    return () => { active = false; };
+  }, [folder]);
+  useEffect(() => {
+    if (folder && imageSettingsFolder === folder) void writeBlob(folder, 'settings/image-generator.json', new Blob([JSON.stringify({ ...imageSettings, apiKey: '' }, null, 2)], { type: 'application/json' })).catch(() => {});
+  }, [folder, imageSettingsFolder, imageSettings]);
+  const activeProfile = profiles.find(x => x.id === selectedProfileId) || profiles[0];
+  const config: AIConfig = { ...activeProfile, apiKey: apiKeys[activeProfile.id] || '' };
+  const modelReady = isModelReady(config) && !(modelSession.state === 'testing' && modelSession.fingerprint === modelFingerprint(config));
+  const setConfig = (next: AIConfig) => {
+    setProfiles(previous => previous.map(x => x.id === next.id ? { ...next, apiKey: '' } : x));
+    if (next.apiKey !== config.apiKey) setApiKeys(previous => ({ ...previous, [next.id]: next.apiKey }));
+  };
+  const showHelp = dialog === 'help';
+  const setShowHelp = (show: boolean) => show ? openDialog('help') : closeDialog();
   const importRef = useRef<HTMLInputElement>(null);
   const sourceRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
+  const actionInFlight = useRef(false);
+  const actionNotified = useRef(false);
+  const resumeInFlight = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
+  const workerRef = useRef<Worker | null>(null);
+  const queuedRef = useRef(new Set<string>());
+  const [chatActive, setChatActive] = useState(false);
+  const [analysisPaused, setAnalysisPaused] = useState(false);
+  useEffect(() => {
+    for (const [key, value] of [['selected-book', selectedBook], ['selected-chapter', selectedChapter], ['selected-character', selectedCharacter], ['selected-world', selectedWorld], ['selected-influence', selectedInfluence], ['selected-source', selectedSource]]) sessionStorage.setItem(key, value);
+  }, [selectedBook, selectedChapter, selectedCharacter, selectedWorld, selectedInfluence, selectedSource]);
 
-  useEffect(() => { saveCache(project); }, [project]);
+  useEffect(() => {
+    const worker = new Worker(new URL('./importWorker.ts', import.meta.url), { type: 'module' });
+    workerRef.current = worker;
+    worker.onmessage = (event: MessageEvent<{ type: string; sourceId: string; updatedAt?: string; graph?: StoryGraph; error?: string }>) => {
+      if (workerRef.current !== worker) return;
+      const { type, sourceId, updatedAt, graph, error } = event.data;
+      if (type === 'started') { setProject(p => ({ ...p, sources: p.sources.map(s => s.id === sourceId ? { ...s, analysisStatus: 'running' } : s) })); return; }
+      queuedRef.current.delete(sourceId);
+      if (type === 'done' && graph) {
+        const source = projectRef.current.sources.find(item => item.id === sourceId && item.updatedAt === updatedAt);
+        if (source) showToast(`Finished analyzing ${source.name}. Review its story map.`);
+        update(p => {
+          const source = p.sources.find(s => s.id === sourceId);
+          if (!source || source.updatedAt !== updatedAt) return { ...p, sources: p.sources.map(s => s.id === sourceId ? { ...s, analysisStatus: 'pending' } : s) };
+          const old = p.storyGraph || emptyStoryGraph();
+          const merged = <K extends keyof StoryGraph>(key: K): StoryGraph[K] => {
+            const kept = old[key].filter(x => x.sourceId !== sourceId || x.status !== 'proposed' || !x.id.startsWith(`${sourceId}:`)).map(x => {
+              if (x.sourceId !== sourceId) return x;
+              const refreshed = graph[key].find(y => y.id === x.id);
+              return { ...x, stale: refreshed ? refreshed.evidence !== x.evidence : !source.text.includes(x.evidence || '') };
+            });
+            return [...kept, ...graph[key].filter(x => !kept.some(y => y.id === x.id || (y.sourceId === sourceId && y.evidence && y.evidence === x.evidence && (!('entityKey' in x) || ('entityKey' in y && y.entityKey === x.entityKey)))))] as StoryGraph[K];
+          };
+          return { ...p, storyGraph: { units: merged('units'), arcs: merged('arcs'), mentions: merged('mentions'), events: merged('events'), suggestions: merged('suggestions') }, sources: p.sources.map(s => s.id === sourceId ? { ...s, analysisStatus: 'ready' as const, analysisError: '' } : s) };
+        });
+      } else if (type === 'error') {
+        const sourceName = projectRef.current.sources.find(item => item.id === sourceId)?.name || 'document';
+        showToast(`Analysis failed for ${sourceName}: ${error || 'Unknown error'}`, 'error');
+        setProject(p => ({ ...p, sources: p.sources.map(s => s.id === sourceId ? { ...s, analysisStatus: 'error', analysisError: error } : s) }));
+      }
+    };
+    return () => { worker.terminate(); workerRef.current = null; queuedRef.current.clear(); };
+  }, []);
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    if (chatActive) { worker.postMessage({ type: 'pause' }); setAnalysisPaused(true); return; }
+    const timer = setTimeout(() => { worker.postMessage({ type: 'resume' }); setAnalysisPaused(false); }, 1200);
+    return () => clearTimeout(timer);
+  }, [chatActive]);
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    for (const source of project.sources) {
+      if (source.analysisStatus && source.analysisStatus !== 'pending') continue;
+      if (queuedRef.current.has(source.id)) continue;
+      queuedRef.current.add(source.id);
+      worker.postMessage({ type: 'enqueue', job: { sourceId: source.id, updatedAt: source.updatedAt, text: source.text, characters: project.characters.map(c => ({ id: c.id, name: c.name })) } });
+    }
+  }, [project.sources, project.characters]);
+
+  useEffect(() => {
+    if (!saveCache(project)) showToast('Browser project cache is full. Connect a folder and sync your story files.', 'error');
+  }, [project]);
   useEffect(() => {
     loadHandle().then(handle => {
       if (handle) { setFolder(handle); setFolderName(handle.name); }
     }).catch(() => {});
   }, []);
+  useEffect(() => { if (folder) void modelDownloadManager.discover(folder); }, [folder]);
+  useEffect(() => { setBrowserImageFolder(folder); if (folder) void browserImageAssetsManager.discover(folder).catch(error => showToast(error instanceof Error ? error.message : String(error), 'error')); }, [folder]);
   useEffect(() => {
-    localStorage.setItem('ai-provider', config.provider);
-    localStorage.setItem('ai-model', config.model);
-    localStorage.setItem('ai-endpoint', config.endpoint);
-  }, [config.provider, config.model, config.endpoint]);
+    localStorage.setItem('ai-profiles', JSON.stringify(profiles.map(x => ({ ...x, apiKey: '' }))));
+  }, [profiles]);
+  useEffect(() => { localStorage.setItem('ai-selected-profile', selectedProfileId); }, [selectedProfileId]);
   useEffect(() => {
     if (!folder) return;
     const paths = project.characters.flatMap(x => x.imagePaths);
@@ -87,17 +208,53 @@ export default function App() {
     setProject(previous => ({ ...reconcileChanges(previous, fn(previous)), updatedAt: now() }));
     setDirty(true);
   };
-  const flash = (message: string) => { setNotice(message); setTimeout(() => setNotice(''), 5000); };
-  const act = async (name: string, fn: () => Promise<void>) => {
+  async function saveWorldNote(note: WorldNote) {
+    update(p => ({ ...p, world: [...p.world, note] }));
+    if (!folder) return false;
+    try { await writeBlob(folder, `world/notes/${note.id}.json`, new Blob([JSON.stringify(note, null, 2) + '\n'], { type: 'application/json' })); return true; }
+    catch { flash('World note saved in this browser. Reconnect and sync the folder to copy it to your USB drive.'); return false; }
+  }
+  async function saveContinuityReport(report: ContinuityReport) {
+    update(p => ({ ...p, reviews: [...(p.reviews || []), report] }));
+    if (!folder) return false;
+    try { await writeBlob(folder, `world/reviews/${report.id}.json`, new Blob([JSON.stringify(report, null, 2) + '\n'], { type: 'application/json' })); return true; }
+    catch { flash('Review saved in this browser. Reconnect and sync the folder for USB access.'); return false; }
+  }
+  async function updateContinuityReport(report: ContinuityReport) {
+    update(p => ({ ...p, reviews: (p.reviews || []).map(x => x.id === report.id ? report : x) }));
+    if (!folder) return false;
+    try { await writeBlob(folder, `world/reviews/${report.id}.json`, new Blob([JSON.stringify(report, null, 2) + '\n'], { type: 'application/json' })); return true; }
+    catch { flash('Review update saved in this browser. Reconnect and sync the folder for USB access.'); return false; }
+  }
+  const flash = (message: string) => { if (actionInFlight.current) actionNotified.current = true; showToast(message); };
+  const act = async (name: string, fn: () => Promise<unknown>) => {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
+    actionNotified.current = false;
+    const startedAt = performance.now();
     setBusy(name);
-    try { await fn(); } catch (error) { flash(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(''); }
+    try {
+      await fn();
+      if (!actionNotified.current && name !== 'connect' && name !== 'reload') showCompletionToast(`${name.replaceAll('-', ' ')} complete.`, startedAt);
+    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
+    finally { actionInFlight.current = false; setBusy(''); }
   };
-  const askAI = (name: string, prompt: string, apply: (text: string) => void) => act(name, async () => {
-    const text = await generate(config, prompt);
-    apply(text);
-    flash('AI suggestion added. Review and edit it before continuing.');
-  });
+  const runAIAction = (name: string, fn: () => Promise<void>) => {
+    if (!modelReady) { openDialog('ai'); return; }
+    void act(name, fn);
+  };
+  const runImageAction = (name: string, fn: () => Promise<void>) => {
+    if (!imageConfigured(imageSettings) || !isImageReady(imageSettings)) { setView('ai-profiles'); return; }
+    void act(name, fn);
+  };
+  const askAI = (name: string, prompt: string, apply: (text: string) => void) => {
+    if (!modelReady) { openDialog('ai'); return; }
+    void act(name, async () => {
+      const text = await generate(config, prompt);
+      apply(text);
+      flash('AI suggestion added. Review and edit it before continuing.');
+    });
+  };
   const canon = (book?: Book) => JSON.stringify({
     project: { title: project.title, format: project.format, premise: project.premise, audience: project.audience, readingLevel: project.readingLevel, genres: project.genres, tone: project.tone, themes: project.themes, boundaries: project.boundaries },
     characters: project.characters.map(({ name, role, background, appearance, personality, arc, relationships }) => ({ name, role, background, appearance, personality, arc, relationships })),
@@ -121,9 +278,19 @@ export default function App() {
   const totalChapters = project.books.reduce((n, b) => n + b.chapters.length, 0);
   const reviewCount = project.books.reduce((n, b) => n + b.chapters.filter(ch => ch.review.length).length, 0);
 
-  async function connectFolder() {
+  async function connectFolder(resumeDownload = false): Promise<FileSystemDirectoryHandle | null> {
     if (!window.showDirectoryPicker) throw new Error('Folder access needs a current Chromium browser on HTTPS or localhost.');
-    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    setFolderHint('');
+    let handle: FileSystemDirectoryHandle;
+    try { handle = await window.showDirectoryPicker({ mode: 'readwrite' }); }
+    catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setFolderHint('The browser canceled or refused folder access. If you selected a folder, try a writable subfolder on your USB drive and approve editing access. Cancel leaves your current workspace as it was.');
+        return null;
+      }
+      throw error;
+    }
+    if (resumeDownload) await verifyRecoverableModelFolder(handle);
     let loaded: Project | null = null;
     let exists = true;
     try { await handle.getFileHandle('project.json'); }
@@ -133,6 +300,20 @@ export default function App() {
     else { await writeProject(handle, projectRef.current); setDirty(false); flash('Story files created in the selected folder.'); }
     await saveHandle(handle);
     setFolder(handle); setFolderName(handle.name);
+    return handle;
+  }
+  async function resumePendingDownload() {
+    if (resumeInFlight.current) return;
+    resumeInFlight.current = true;
+    try {
+      const hasRecovery = !!modelDownloadManager.getSnapshot().recovery;
+      const target = folder || await connectFolder(!modelDownloadManager.getSnapshot().queue[0]?.licenseOnly && (modelDownloadManager.getSnapshot().recovery?.bytes || 0) > 0);
+      if (!target) return;
+      const onComplete = (path: string) => setProfiles(previous => previous.map(profile => profile.id === 'browser' && profile.provider === 'browser' ? { ...profile, model: path } : profile));
+      const started = hasRecovery ? await resumeRecoverableModel(target, onComplete) : await resumeQueuedModels(target, onComplete);
+      if (!started) showToast('A model download is already running.', 'info');
+    } catch (error) { showToast(`Cannot resume model download: ${error instanceof Error ? error.message : String(error)}`, 'error'); }
+    finally { resumeInFlight.current = false; }
   }
   async function syncFolder() {
     if (!folder) return;
@@ -141,7 +322,7 @@ export default function App() {
   }
   async function reloadFolder() {
     if (!folder) return;
-    if (dirty && !window.confirm('Reload from the folder and discard unsaved browser edits?')) return;
+    if (dirty && !await confirmAction('Reload from the folder and discard unsaved browser edits?', { title: 'Discard unsaved edits', confirmLabel: 'Reload', destructive: true })) return;
     const loaded = await readProject(folder);
     const revised = reconcileChanges(projectRef.current, loaded);
     setProject(revised); setDirty(JSON.stringify(revised) !== JSON.stringify(loaded));
@@ -150,7 +331,7 @@ export default function App() {
   async function importSnapshot(file: File) {
     const value = JSON.parse(await file.text()) as Project;
     if (value.schemaVersion !== 1 || !Array.isArray(value.books)) throw new Error('Choose a valid story-project.json export.');
-    setProject(value); setDirty(true); flash('Project snapshot imported. Sync it to save separate files.');
+    setProject({ ...value, reviews: value.reviews || [], storyGraph: value.storyGraph || emptyStoryGraph() }); setDirty(true); flash('Project snapshot imported. Sync it to save separate files.');
   }
   async function uploadSources(files: FileList | null) {
     if (!files?.length) return;
@@ -159,11 +340,109 @@ export default function App() {
       const id = uid();
       const path = `sources/originals/${id}-${file.name.replace(/[^a-z0-9.\-_]/gi, '_')}`;
       if (folder) await writeBlob(folder, path, file);
-      const source: Source = { id, updatedAt: now(), name: file.name, path: folder ? path : '', text, extracted: false };
+      const source: Source = { id, updatedAt: now(), name: file.name, path: folder ? path : '', text, extracted: false, analysisStatus: 'pending' };
       update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), sources: [...p.sources, source] }));
       setSelectedSource(id);
     }
     flash(folder ? 'Documents imported; originals saved to the folder.' : 'Text imported. Connect a folder to preserve original files.');
+  }
+  function setGraphStatus(kind: keyof StoryGraph, id: string, status: 'proposed' | 'accepted' | 'dismissed') {
+    update(p => ({ ...p, storyGraph: { ...p.storyGraph, [kind]: p.storyGraph[kind].map(item => item.id === id ? { ...item, status, stale: status === 'accepted' ? false : 'stale' in item ? item.stale : undefined } : item) } }));
+  }
+  function acceptAllSourceFindings(sourceId: string) {
+    update(p => ({ ...p, storyGraph: acceptSourceFindings(p.storyGraph, sourceId) }));
+  }
+  function createCharacterFromMention(name: string) {
+    const existing = projectRef.current.characters.find(x => x.name.toLowerCase() === name.toLowerCase());
+    const character = existing || { ...blankCharacter(), name };
+    update(p => ({ ...p, characters: existing ? p.characters : [...p.characters, character], storyGraph: { ...p.storyGraph, mentions: p.storyGraph.mentions.map(x => x.kind === 'character' && x.name.toLowerCase() === name.toLowerCase() ? { ...x, characterId: character.id } : x) } }));
+    setSelectedCharacter(character.id); setView('characters');
+  }
+  function deleteSource(sourceId: string) {
+    update(p => ({ ...p, sources: p.sources.filter(s => s.id !== sourceId), storyGraph: {
+      units: p.storyGraph.units.filter(x => x.sourceId !== sourceId),
+      arcs: p.storyGraph.arcs.filter(x => x.sourceId !== sourceId),
+      mentions: p.storyGraph.mentions.filter(x => x.sourceId !== sourceId),
+      events: p.storyGraph.events.filter(x => x.sourceId !== sourceId),
+      suggestions: p.storyGraph.suggestions.filter(x => x.sourceId !== sourceId),
+    } }));
+  }
+  function applySourceStructure(sourceId: string) {
+    update(p => {
+      const units = p.storyGraph.units.filter(x => x.sourceId === sourceId && x.status === 'accepted');
+      const byId = new Map(p.storyGraph.units.filter(x => x.sourceId === sourceId).map(x => [x.id, x]));
+      const bookFor = (unitId?: string): string | undefined => {
+        let unit = unitId ? byId.get(unitId) : undefined;
+        while (unit && unit.kind !== 'book') unit = unit.parentId ? byId.get(unit.parentId) : undefined;
+        return unit?.id;
+      };
+      const books = [...p.books];
+      for (const unit of units.filter(x => x.kind === 'book')) {
+        const position = unit.ordinal || books.length + 1;
+        const index = books.findIndex(x => x.position === position);
+        const current = index >= 0 ? books[index] : makeBook(position);
+        const chapterUnits = units.filter(x => x.kind === 'chapter' && bookFor(x.id) === unit.id);
+        const chapters = [...current.chapters];
+        for (const chapter of chapterUnits) {
+          const number = chapter.ordinal || chapters.length + 1;
+          const chapterIndex = chapters.findIndex(x => x.number === number);
+          const next = chapterIndex >= 0 ? { ...chapters[chapterIndex], title: chapter.title, updatedAt: now() } : { ...makeChapter(number), title: chapter.title };
+          if (chapterIndex >= 0) chapters[chapterIndex] = next;
+          else chapters.push(next);
+        }
+        const nextBook = { ...current, title: unit.title, sourceIds: [...new Set([...current.sourceIds, sourceId])], chapters: chapters.sort((a, b) => a.number - b.number), updatedAt: now() };
+        if (index >= 0) books[index] = nextBook; else books.push(nextBook);
+      }
+      return { ...p, books: books.sort((a, b) => a.position - b.position) };
+    });
+    flash('Accepted books and chapters applied. Review their titles and outlines.');
+  }
+  async function enrichSource(source: Source) {
+    if (!config.model.trim()) throw new Error('Choose and load an AI model in Settings first.');
+    type Finding = { kind: 'character' | 'place' | 'event' | 'arc'; name?: string; title?: string; unitTitle?: string; age?: string; health?: string; location?: string; timeframe?: string; startUnitTitle?: string; endUnitTitle?: string; evidence: string };
+    const findings: Finding[] = [];
+    const outputLimit = Math.min(900, config.maxOutputTokens);
+    const chunkSize = Math.max(1000, Math.min(6500, (config.contextWindow - outputLimit - 700) * 3));
+    for (let offset = 0; offset < source.text.length; offset += chunkSize) {
+      const chunk = source.text.slice(offset, offset + chunkSize);
+      const prompt = `Find people, places, events, arcs, and changes in age, health, location, and time in this story document. Return ONLY a JSON array of up to 12 objects with kind (character, place, event, arc), name or title, unitTitle if known, age, health, location, timeframe, startUnitTitle, endUnitTitle, and evidence. Evidence must be a short EXACT excerpt from the supplied text. Do not invent facts. Link a person across story sections by their consistent name.\n\nDOCUMENT CHUNK:\n${chunk}`;
+      const parsed = parseJson<Finding[]>(await generate({ ...config, maxOutputTokens: outputLimit }, prompt));
+      if (Array.isArray(parsed)) findings.push(...parsed);
+    }
+    update(p => {
+      const graph = { ...p.storyGraph, mentions: [...p.storyGraph.mentions], events: [...p.storyGraph.events], arcs: [...p.storyGraph.arcs] };
+      const units = graph.units.filter(x => x.sourceId === source.id);
+      const unitId = (title?: string) => title && units.find(x => x.title.toLowerCase() === title.toLowerCase())?.id;
+      for (const item of findings) {
+        const evidence = String(item.evidence || '').trim().slice(0, 300);
+        if (evidence.length < 8 || !source.text.toLowerCase().includes(evidence.toLowerCase())) continue;
+        if (item.kind === 'character' || item.kind === 'place') {
+          const name = String(item.name || '').trim().slice(0, 90);
+          if (!name) continue;
+          const entityKey = `${item.kind}:${name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+          if (graph.mentions.some(x => x.sourceId === source.id && x.entityKey === entityKey && x.evidence === evidence)) continue;
+          graph.mentions.push({ id: uid(), sourceId: source.id, kind: item.kind, name, entityKey, unitId: unitId(item.unitTitle), characterId: item.kind === 'character' ? p.characters.find(x => x.name.toLowerCase() === name.toLowerCase())?.id : undefined, age: item.age, health: item.health, location: item.location, timeframe: item.timeframe, evidence, status: 'proposed' });
+        } else if (item.kind === 'event' && item.title) {
+          if (graph.events.some(x => x.sourceId === source.id && x.evidence === evidence)) continue;
+          graph.events.push({ id: uid(), sourceId: source.id, title: String(item.title).slice(0, 120), unitId: unitId(item.unitTitle), timeframe: item.timeframe, location: item.location, characterNames: [], evidence, status: 'proposed' });
+        } else if (item.kind === 'arc' && item.title) {
+          if (graph.arcs.some(x => x.sourceId === source.id && x.evidence === evidence)) continue;
+          graph.arcs.push({ id: uid(), sourceId: source.id, title: String(item.title).slice(0, 120), startUnitId: unitId(item.startUnitTitle), endUnitId: unitId(item.endUnitTitle), evidence, status: 'proposed' });
+        }
+      }
+      return { ...p, storyGraph: graph };
+    });
+    flash('AI candidates added. Review them in the story map.');
+  }
+  function setSuggestionStatus(id: string, status: 'proposed' | 'accepted' | 'dismissed') {
+    const suggestion = projectRef.current.storyGraph.suggestions.find(x => x.id === id);
+    if (!suggestion) return;
+    if (status === 'accepted' && suggestion.status !== 'accepted') {
+      const note: WorldNote = { id: uid(), updatedAt: now(), title: suggestion.title, details: suggestion.detail, category: suggestion.category };
+      void saveWorldNote(note);
+      setSelectedWorld(note.id);
+    }
+    setGraphStatus('suggestions', id, status);
   }
   async function uploadImages(files: FileList | null) {
     if (!files?.length || !currentCharacter) return;
@@ -182,7 +461,7 @@ export default function App() {
     if (!folder) throw new Error('Connect a project folder before generating reference images.');
     if (!currentCharacter.appearance.trim()) throw new Error('Describe the character’s appearance first.');
     const prompt = `Create an original, single-character visual reference portrait. Full color, clear face and clothing details, neutral unobtrusive background, no text, no copyrighted character likeness. Character: ${currentCharacter.name}. Role: ${currentCharacter.role}. Exact appearance instructions: ${currentCharacter.appearance}. Project audience: ${project.audience}. Keep this person visually consistent with these instructions.`;
-    const blob = await generateImage(config, prompt);
+    const blob = await generateImage(imageSettings, prompt);
     const path = `assets/characters/${currentCharacter.id}/${uid()}-generated.png`;
     await writeBlob(folder, path, blob);
     update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, imagePaths: [...c.imagePaths, path], updatedAt: now() } : c) }));
@@ -192,8 +471,9 @@ export default function App() {
     const book = makeBook(Math.max(0, ...project.books.map(b => b.position)) + 1);
     update(p => ({ ...p, books: [...p.books, book] })); setSelectedBook(book.id); setSelectedChapter(book.chapters[0].id); setView('books');
   }
-  function generateBookOutline(book: Book) {
-    if (book.chapters.some(ch => ch.outline || ch.summary || ch.draft) && !window.confirm('Replace this book’s existing chapters with a new outline?')) return;
+  async function generateBookOutline(book: Book) {
+    if (!modelReady) { openDialog('ai'); return; }
+    if (book.chapters.some(ch => ch.outline || ch.summary || ch.draft) && !await confirmAction('Replace this book’s existing chapters with a new outline?', { title: 'Replace chapter outlines', confirmLabel: 'Replace', destructive: true })) return;
     askAI('book-outline', `Create an original chapter outline for this book. Use the canon below, including any referenced later book if this is a prequel. Return ONLY a JSON array of 8 to 12 objects, each with "title" and "outline" strings. Each outline should describe major beats, a turn, and consequences. Do not copy influence plots.\n\nCANON:\n${canon(book)}`, text => {
       const proposed = parseJson<{ title: string; outline: string }[]>(text);
       if (!Array.isArray(proposed) || !proposed.every(x => typeof x.title === 'string' && typeof x.outline === 'string')) throw new Error('AI returned an invalid chapter outline.');
@@ -259,17 +539,18 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark">R</div><div><strong>Rivers of Memory</strong><span>STORY STUDIO</span></div></div>
       <div className="sidebar-label">WORKSPACE</div>
-      <nav>{nav.map(item => { const Icon = icons[item]; return <button key={item} className={view === item ? 'nav-item active' : 'nav-item'} onClick={() => setView(item)}><Icon size={18} /><span>{labels[item]}</span>{item === 'books' && reviewCount > 0 && <em>{reviewCount}</em>}</button>; })}</nav>
+      <nav>{nav.map(item => { const Icon = icons[item]; return <button key={item} className={`nav-item${view === item ? ' active' : ''}${item === 'story-profile' || item === 'ai-profiles' || item === 'project-files' ? ' sub-item' : ''}`} onClick={() => setView(item)}><Icon size={18} /><span>{labels[item]}</span>{item === 'books' && reviewCount > 0 && <em>{reviewCount}</em>}</button>; })}</nav>
       <div className="sidebar-bottom">
-        <div className="folder-card"><div className="folder-card-top"><FolderOpen size={18} /><strong>{connected ? folderName : 'Local workspace'}</strong></div><p>{connected ? (dirty ? 'Unsynced browser edits' : 'Folder connected') : 'Connect a folder to save separate JSON files and images.'}</p><button className="small-button" onClick={() => act('connect', connectFolder)}>{connected ? 'Change folder' : 'Connect folder'}</button>{connected && <button className="small-button ghost" onClick={() => act('sync', syncFolder)}>Sync files</button>}</div>
+        <div className="folder-card"><div className="folder-card-top"><FolderOpen size={18} /><strong>{connected ? folderName : 'Local workspace'}</strong></div><p>{connected ? (dirty ? 'Unsynced browser edits' : 'Folder connected') : 'Connect a folder to save separate JSON files and images.'}</p><button className="small-button" disabled={!!busy} onClick={() => act('connect', connectFolder)}>{connected ? 'Change folder' : 'Connect folder'}</button>{connected && <button className="small-button ghost" disabled={!!busy} onClick={() => act('sync', syncFolder)}>Sync files</button>}{folderHint && <p className="folder-hint" role="status">{folderHint}</p>}</div>
         <button className="help-link" onClick={() => setShowHelp(true)}><CircleHelp size={17} /> How this works</button>
       </div>
     </aside>
     <main className="main">
-      <header className="topbar"><div className="breadcrumb">STORY STUDIO <ChevronRight size={14} /> {labels[view].toUpperCase()}</div><div className="top-actions"><span className={dirty ? 'save-state unsaved' : 'save-state'}><i />{dirty ? 'Changes to sync' : connected ? 'Folder in sync' : 'Saved in browser'}</span>{connected && <button className="button secondary compact" onClick={() => act('sync', syncFolder)} disabled={!!busy}><RefreshCw size={15} /> Sync folder</button>}</div></header>
+      <header className="topbar"><div className="breadcrumb">STORY STUDIO <ChevronRight size={14} /> {labels[view].toUpperCase()}</div><div className="top-actions"><DownloadIndicator onOpen={() => setView('ai-profiles')} onResume={() => void resumePendingDownload()}/><span className={dirty ? 'save-state unsaved' : 'save-state'}><i />{dirty ? 'Changes to sync' : connected ? 'Folder in sync' : 'Saved in browser'}</span>{connected && <button className="button secondary compact" onClick={() => act('sync', syncFolder)} disabled={!!busy}><RefreshCw size={15} /> Sync folder</button>}</div></header>
+      {view === 'chat' && <ChatPanel project={project} folder={folder} config={config} imageConfig={imageSettings} profiles={profiles} onSelectProfile={setSelectedProfileId} onSettings={() => setView('ai-profiles')} onOpenWorld={id => { setSelectedWorld(id); setView('world'); }} onUpload={uploadSources} onSaveWorldNote={saveWorldNote} onSaveReport={saveContinuityReport} onUpdateReport={updateContinuityReport} onRequestModelTest={reason => reason === 'image' ? setView('ai-profiles') : openDialog('ai')} onChatActivityChange={setChatActive} onSuggestionStatus={setSuggestionStatus} onAddSuggestions={suggestions => update(p => ({ ...p, storyGraph: { ...p.storyGraph, suggestions: [...p.storyGraph.suggestions, ...suggestions] } }))}/>}
       {view === 'overview' && <section className="page">
         <div className="page-heading"><div><div className="eyebrow">YOUR STORY UNIVERSE</div><h1>{project.title}</h1><p>A home for the people, places, and chapters that make up your world.</p></div><button className="button primary" onClick={() => setView('books')}><BookOpen size={17} /> Continue writing</button></div>
-        <div className="hero"><div><span className="hero-kicker">THE WRITING DESK</span><h2>Every great story<br/><em>starts somewhere.</em></h2><p>Shape the world. Build the arc. Write one chapter at a time.</p><button onClick={() => setView('settings')}>Set up your story <ChevronRight size={16}/></button></div><div className="hero-art"><div className="orb orb-one"/><div className="orb orb-two"/><div className="book-illustration"><div className="book-line"/><div className="book-line short"/><div className="book-line"/><div className="book-line half"/></div></div></div>
+        <div className="hero"><div><span className="hero-kicker">THE WRITING DESK</span><h2>Every great story<br/><em>starts somewhere.</em></h2><p>Shape the world. Build the arc. Write one chapter at a time.</p><button onClick={() => setView('story-profile')}>Set up your story <ChevronRight size={16}/></button></div><div className="hero-art"><div className="orb orb-one"/><div className="orb orb-two"/><div className="book-illustration"><div className="book-line"/><div className="book-line short"/><div className="book-line"/><div className="book-line half"/></div></div></div>
         <div className="stats"><div><span>BOOKS PLANNED</span><strong>{project.books.length.toString().padStart(2, '0')}</strong></div><div><span>CHAPTERS</span><strong>{totalChapters.toString().padStart(2, '0')}</strong></div><div><span>CHARACTERS</span><strong>{project.characters.length.toString().padStart(2, '0')}</strong></div><div><span>NEED REVIEW</span><strong>{reviewCount.toString().padStart(2, '0')}</strong></div></div>
         <div className="section-row"><h2>Your books</h2><button className="text-button" onClick={addBook}><Plus size={17}/> Add book</button></div>
         <div className="book-grid">{project.books.map(book => <button className="book-card" key={book.id} onClick={() => { setSelectedBook(book.id); setView('books'); }}><div className="book-cover"><span>RIVERS OF MEMORY</span><strong>{book.position.toString().padStart(2, '0')}</strong><div className="cover-lines"/></div><div className="book-card-copy"><span>BOOK {book.position}</span><h3>{book.title}</h3><p>{book.premise ? excerpt(book.premise, 95) : 'A new story waiting to take shape.'}</p><small>{book.chapters.length} chapter{book.chapters.length !== 1 ? 's' : ''} <ChevronRight size={14}/></small></div></button>)}</div>
@@ -279,7 +560,7 @@ export default function App() {
       {view === 'books' && <section className="page">
         <div className="page-heading"><div><div className="eyebrow">STORY STRUCTURE</div><h1>Books & chapters</h1><p>Move from chapter beats to scene summaries to finished prose.</p></div><button className="button primary" onClick={addBook}><Plus size={17}/> Add book</button></div>
         <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">BOOKS <span>{project.books.length}</span></div>{[...project.books].sort((a,b) => a.position - b.position).map(book => <button key={book.id} className={currentBook?.id === book.id ? 'list-item selected' : 'list-item'} onClick={() => { setSelectedBook(book.id); setSelectedChapter(''); }}><span className="list-number">{book.position.toString().padStart(2, '0')}</span><span><strong>{book.title}</strong><small>{book.chapters.length} chapters</small></span><ChevronRight size={15}/></button>)}</div>
-          {currentBook && <div className="editor-panel"><div className="editor-top"><span>BOOK {currentBook.position} / {project.format.toUpperCase()}</span><button className="icon-button danger" title="Delete book" onClick={() => { if (window.confirm(`Delete ${currentBook.title}?`)) update(p => ({ ...p, books: p.books.filter(b => b.id !== currentBook.id).map(b => b.referenceBookIds.includes(currentBook.id) ? markChapters({ ...b, referenceBookIds: b.referenceBookIds.filter(id => id !== currentBook.id) }, ['outline', 'summary', 'draft']) : b) })); }}><Trash2 size={17}/></button></div>
+          {currentBook && <div className="editor-panel"><div className="editor-top"><span>BOOK {currentBook.position} / {project.format.toUpperCase()}</span><button className="icon-button danger" title="Delete book" onClick={() => { void confirmAction(`Delete ${currentBook.title}?`, { title: 'Delete book', confirmLabel: 'Delete', destructive: true }).then(accepted => { if (accepted) update(p => ({ ...p, books: p.books.filter(b => b.id !== currentBook.id).map(b => b.referenceBookIds.includes(currentBook.id) ? markChapters({ ...b, referenceBookIds: b.referenceBookIds.filter(id => id !== currentBook.id) }, ['outline', 'summary', 'draft']) : b) })); }); }}><Trash2 size={17}/></button></div>
             <Field label="Book title" value={currentBook.title} onChange={v => patchBook(currentBook.id, b => ({ ...b, title: v }))}/>
             <label className="field"><span>Reading order (use 0 for a prequel before book 1)</span><input type="number" min="0" value={currentBook.position} onChange={e => patchBook(currentBook.id, b => ({ ...b, position: Math.max(0, Number(e.target.value) || 0) }))}/></label>
             <Field label="Premise & role in the series" value={currentBook.premise} multiline placeholder="What is this book about? What changes by the end?" onChange={v => patchBook(currentBook.id, b => markChapters({ ...b, premise: v }, ['outline', 'summary', 'draft']))}/>
@@ -287,30 +568,51 @@ export default function App() {
             {project.sources.length > 0 && <div className="field"><span>Use these source documents for this book’s outline</span><div className="checks">{project.sources.map(s => <label key={s.id}><input type="checkbox" checked={currentBook.sourceIds?.includes(s.id) || false} onChange={e => patchBook(currentBook.id, book => markChapters({ ...book, sourceIds: e.target.checked ? [...(book.sourceIds || []), s.id] : (book.sourceIds || []).filter(id => id !== s.id) }, ['outline', 'summary', 'draft']))}/>{s.name}</label>)}</div></div>}
             <div className="subsection-heading"><div><h3>Chapter path</h3><p>Outline → summary → full text. Edits to earlier stages flag later work for review.</p></div><div><button className="button secondary compact" disabled={!!busy} onClick={() => generateBookOutline(currentBook)}><Sparkles size={15}/> Generate outline</button><button className="button secondary compact" onClick={() => patchBook(currentBook.id, b => ({ ...b, chapters: [...b.chapters, makeChapter(b.chapters.length + 1)] }))}><Plus size={15}/> Chapter</button></div></div>
             <div className="chapter-list">{currentBook.chapters.map(ch => <button key={ch.id} className={currentChapter?.id === ch.id ? 'chapter-tab active' : 'chapter-tab'} onClick={() => setSelectedChapter(ch.id)}><span>{ch.number.toString().padStart(2, '0')}</span><strong>{ch.title}</strong>{ch.review.length > 0 && <i title="Needs review"/>}</button>)}</div>
-            {currentChapter && <div className="chapter-editor"><div className="chapter-heading"><span>CHAPTER {currentChapter.number}</span><button className="icon-button danger" title="Delete chapter" onClick={() => { if (window.confirm('Delete this chapter?')) patchBook(currentBook.id, b => ({ ...b, chapters: b.chapters.filter(ch => ch.id !== currentChapter.id).map((ch, i) => ({ ...ch, number: i + 1 })) })); }}><Trash2 size={16}/></button></div>
+            {currentChapter && <div className="chapter-editor"><div className="chapter-heading"><span>CHAPTER {currentChapter.number}</span><button className="icon-button danger" title="Delete chapter" onClick={() => { void confirmAction('Delete this chapter?', { title: 'Delete chapter', confirmLabel: 'Delete', destructive: true }).then(accepted => { if (accepted) patchBook(currentBook.id, b => ({ ...b, chapters: b.chapters.filter(ch => ch.id !== currentChapter.id).map((ch, i) => ({ ...ch, number: i + 1 })) })); }); }}><Trash2 size={16}/></button></div>
               <Field label="Chapter title" value={currentChapter.title} onChange={v => patchChapter(currentBook.id, currentChapter.id, ch => ({ ...ch, title: v, review: [...new Set([...ch.review, 'summary', 'draft'])] as Stage[] }))}/>
               {stages.map(stage => <div className="stage-block" key={stage.id}><div className="stage-heading"><div><span className="stage-number">0{stages.indexOf(stage) + 1}</span><div><strong>{stage.label}</strong><small>{stage.help}</small></div>{currentChapter.review.includes(stage.id) && <span className="review-pill">Review needed</span>}</div><div className="stage-actions">{currentChapter.review.includes(stage.id) && <button onClick={() => patchChapter(currentBook.id, currentChapter.id, ch => ({ ...ch, review: ch.review.filter(s => s !== stage.id) }))}>Mark reviewed</button>}<button disabled={!!busy} onClick={() => generateStage(currentBook, currentChapter, stage.id)}><WandSparkles size={15}/> Generate</button></div></div><textarea aria-label={stage.label} value={currentChapter[stage.id]} placeholder={stage.id === 'outline' ? 'List the major beats of this chapter…' : stage.id === 'summary' ? 'Describe each scene and the change it creates…' : 'Write your chapter here…'} rows={stage.id === 'draft' ? 13 : 5} onChange={e => patchChapter(currentBook.id, currentChapter.id, ch => ({ ...ch, [stage.id]: e.target.value, review: stage.id === 'outline' ? [...new Set([...ch.review.filter(x => x !== 'outline'), 'summary', 'draft'])] as Stage[] : stage.id === 'summary' ? [...new Set([...ch.review.filter(x => x !== 'summary'), 'draft'])] as Stage[] : ch.review.filter(x => x !== 'draft') }))}/></div>)}
             </div>}</div>}</div>
       </section>}
       {view === 'characters' && <section className="page"><div className="page-heading"><div><div className="eyebrow">THE PEOPLE IN YOUR WORLD</div><h1>Characters</h1><p>Keep identity, relationships, and visual continuity in one place.</p></div><div className="heading-actions"><button className="button secondary" disabled={!!busy} onClick={generateCharacter}><Sparkles size={17}/> Generate</button><button className="button primary" onClick={() => { const c = blankCharacter(); update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: [...p.characters, c] })); setSelectedCharacter(c.id); }}><Plus size={17}/> Add character</button></div></div>
-        {project.characters.length === 0 ? <Empty title="No characters yet" description="Add the first person in your story, or use AI to suggest one." action={<button className="button primary" onClick={() => { const c = blankCharacter(); update(p => ({ ...p, characters: [...p.characters, c] })); setSelectedCharacter(c.id); }}>Add character</button>}/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">CAST <span>{project.characters.length}</span></div>{project.characters.map(c => <button key={c.id} className={currentCharacter?.id === c.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedCharacter(c.id)}><span className="avatar">{c.name.slice(0, 1).toUpperCase()}</span><span><strong>{c.name}</strong><small>{c.role || 'Role not set'}</small></span><ChevronRight size={15}/></button>)}</div>{currentCharacter && <div className="editor-panel"><div className="editor-top"><span>CHARACTER PROFILE</span><button className="icon-button danger" title="Delete character" onClick={() => { if (window.confirm(`Delete ${currentCharacter.name}?`)) update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.filter(c => c.id !== currentCharacter.id) })); }}><Trash2 size={17}/></button></div>
+        {project.characters.length === 0 ? <Empty title="No characters yet" description="Add the first person in your story, or use AI to suggest one." action={<button className="button primary" onClick={() => { const c = blankCharacter(); update(p => ({ ...p, characters: [...p.characters, c] })); setSelectedCharacter(c.id); }}>Add character</button>}/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">CAST <span>{project.characters.length}</span></div>{project.characters.map(c => <button key={c.id} className={currentCharacter?.id === c.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedCharacter(c.id)}><span className="avatar">{c.name.slice(0, 1).toUpperCase()}</span><span><strong>{c.name}</strong><small>{c.role || 'Role not set'}</small></span><ChevronRight size={15}/></button>)}</div>{currentCharacter && <div className="editor-panel"><div className="editor-top"><span>CHARACTER PROFILE</span><button className="icon-button danger" title="Delete character" onClick={() => { void confirmAction(`Delete ${currentCharacter.name}?`, { title: 'Delete character', confirmLabel: 'Delete', destructive: true }).then(accepted => { if (accepted) update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.filter(c => c.id !== currentCharacter.id) })); }); }}><Trash2 size={17}/></button></div>
           <div className="two-col"><Field label="Name" value={currentCharacter.name} onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, name: v, updatedAt: now() } : c) }))}/><Field label="Role in story" value={currentCharacter.role} placeholder="Protagonist, mentor, rival…" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, role: v, updatedAt: now() } : c) }))}/></div>
           {(['background', 'personality', 'arc', 'appearance'] as const).map(key => <Field key={key} label={key === 'appearance' ? 'Visual reference / appearance instructions' : key[0].toUpperCase() + key.slice(1)} value={currentCharacter[key]} multiline rows={key === 'appearance' ? 6 : 4} placeholder={key === 'appearance' ? 'Age range, build, skin tone, hair, eyes, features, clothing, recurring details…' : ''} onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, [key]: v, updatedAt: now() } : c) }))}/>)}
-          <div className="subsection-heading"><div><h3>Relationships</h3><p>Connections become part of the canon used for generation.</p></div></div><div className="relationship-list">{currentCharacter.relationships.map((r, index) => <div className="relationship" key={index}><select value={r.characterId} onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.map((item, i) => i === index ? { ...item, characterId: e.target.value } : item) } : c) }))}><option value="">Choose character</option>{project.characters.filter(c => c.id !== currentCharacter.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input value={r.description} placeholder="How are they connected?" onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.map((item, i) => i === index ? { ...item, description: e.target.value } : item) } : c) }))}/><button className="icon-button" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.filter((_, i) => i !== index) } : c) }))}><X size={17}/></button></div>)}</div><button className="text-button" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: [...c.relationships, { characterId: '', description: '' }] } : c) }))}><Plus size={16}/> Add relationship</button>
-          <div className="subsection-heading"><div><h3>Reference images</h3><p>Saved in assets/characters inside your project folder.</p></div><div><button className="button secondary compact" disabled={!!busy} onClick={() => act('reference-image', createReferenceImage)}><Sparkles size={15}/> Generate portrait</button><button className="button secondary compact" onClick={() => imageRef.current?.click()}><CloudUpload size={15}/> Upload images</button></div></div><div className="image-grid">{currentCharacter.imagePaths.map(path => <div key={path} className="image-tile">{imageUrls[path] ? <img src={imageUrls[path]} alt={currentCharacter.name + ' reference'}/> : <div className="image-missing">Connect folder to view</div>}<button title="Remove image reference" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, imagePaths: c.imagePaths.filter(x => x !== path) } : c) }))}><X size={15}/></button></div>)}</div>
+          <div className="subsection-heading"><div><h3>Relationships</h3><p>Connections become part of the canon used for generation.</p></div></div><div className="relationship-list">{currentCharacter.relationships.map((r, index) => <div className="relationship" key={index}><select value={r.characterId} onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.map((item, i) => i === index ? { ...item, characterId: e.target.value } : item) } : c) }))}><option value="">Choose character</option>{project.characters.filter(c => c.id !== currentCharacter.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input value={r.description} placeholder="How are they connected?" onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.map((item, i) => i === index ? { ...item, description: e.target.value } : item) } : c) }))}/><button className="icon-button danger" title="Remove relationship" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: c.relationships.filter((_, i) => i !== index) } : c) }))}><X size={17}/></button></div>)}</div><button className="text-button" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, relationships: [...c.relationships, { characterId: '', description: '' }] } : c) }))}><Plus size={16}/> Add relationship</button>
+          <div className="subsection-heading"><div><h3>Reference images</h3><p>Saved in assets/characters inside your project folder.</p></div><div><button className="button secondary compact" disabled={!!busy} onClick={() => runImageAction('reference-image', createReferenceImage)}><Sparkles size={15}/> Generate portrait</button><button className="button secondary compact" onClick={() => imageRef.current?.click()}><CloudUpload size={15}/> Upload images</button></div></div><div className="image-grid">{currentCharacter.imagePaths.map(path => <div key={path} className="image-tile">{imageUrls[path] ? <img src={imageUrls[path]} alt={currentCharacter.name + ' reference'}/> : <div className="image-missing">Connect folder to view</div>}<button className="danger" title="Remove image reference" onClick={() => update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, imagePaths: c.imagePaths.filter(x => x !== path) } : c) }))}><X size={15}/></button></div>)}</div>
         </div>}</div>}</section>}
       {view === 'world' && <section className="page"><div className="page-heading"><div><div className="eyebrow">THE STORY BIBLE</div><h1>World building</h1><p>Record facts that every book should remember.</p></div><button className="button primary" onClick={() => { const n = blankWorld(); update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), world: [...p.world, n] })); setSelectedWorld(n.id); }}><Plus size={17}/> Add note</button></div>{project.world.length === 0 ? <Empty title="The world is a blank page" description="Add a place, custom, piece of history, or rule. You can also extract notes from a source document." action={<button className="button secondary" onClick={() => setView('sources')}>Import a document</button>}/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">WORLD NOTES <span>{project.world.length}</span></div>{project.world.map(n => <button key={n.id} className={currentWorld?.id === n.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedWorld(n.id)}><span className="list-number"><Globe2 size={17}/></span><span><strong>{n.title}</strong><small>{n.category}</small></span><ChevronRight size={15}/></button>)}</div>{currentWorld && <div className="editor-panel"><div className="editor-top"><span>WORLD NOTE</span><button className="icon-button danger" onClick={() => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), world: p.world.filter(x => x.id !== currentWorld.id) }))}><Trash2 size={17}/></button></div><Field label="Title" value={currentWorld.title} onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), world: p.world.map(x => x.id === currentWorld.id ? { ...x, title: v, updatedAt: now() } : x) }))}/><label className="field"><span>Category</span><select value={currentWorld.category} onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), world: p.world.map(x => x.id === currentWorld.id ? { ...x, category: e.target.value as WorldNote['category'] } : x) }))}>{['Place', 'Culture', 'History', 'Rule', 'Other'].map(x => <option key={x}>{x}</option>)}</select></label><Field label="Details" value={currentWorld.details} multiline rows={14} placeholder="What is true about this part of your world?" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), world: p.world.map(x => x.id === currentWorld.id ? { ...x, details: v, updatedAt: now() } : x) }))}/></div>}</div>}</section>}
-      {view === 'sources' && <section className="page" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); act('sources', () => uploadSources(e.dataTransfer.files)); }}><div className="page-heading"><div><div className="eyebrow">YOUR STARTING MATERIAL</div><h1>Source documents</h1><p>Bring in outlines and notes. Extract world facts for your story bible.</p></div><button className="button primary" onClick={() => sourceRef.current?.click()}><CloudUpload size={17}/> Import files</button></div><div className="info-banner"><FileText size={19}/><span>Drop PDF, TXT, or Markdown here, or choose Import files. Text from PDFs is extracted locally in your browser. Connect a folder first if you want the original files preserved.</span></div>{project.sources.length === 0 ? <Empty title="No documents imported" description="Drop in your outline PDF and any world notes when they are ready." action={<button className="button primary" onClick={() => sourceRef.current?.click()}>Import files</button>}/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">DOCUMENTS <span>{project.sources.length}</span></div>{project.sources.map(s => <button key={s.id} className={currentSource?.id === s.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedSource(s.id)}><span className="list-number"><FileText size={18}/></span><span><strong>{s.name}</strong><small>{s.text.length.toLocaleString()} characters</small></span><ChevronRight size={15}/></button>)}</div>{currentSource && <div className="editor-panel"><div className="editor-top"><span>IMPORTED DOCUMENT</span><button className="icon-button danger" onClick={() => update(p => ({ ...p, sources: p.sources.filter(s => s.id !== currentSource.id) }))}><Trash2 size={17}/></button></div><h2>{currentSource.name}</h2><p className="muted">Original: {currentSource.path || 'Text only — connect a folder to preserve originals on future imports'}</p><div className="source-actions"><button className="button secondary" disabled={!!busy} onClick={() => extractWorld(currentSource)}><Sparkles size={16}/> Extract worldbuilding</button>{currentSource.extracted && <span className="success-label">Extracted</span>}</div><label className="field"><span>Extracted text (editable)</span><textarea rows={20} value={currentSource.text} onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), sources: p.sources.map(s => s.id === currentSource.id ? { ...s, text: e.target.value, extracted: false } : s) }))}/></label></div>}</div>}</section>}
-      {view === 'influences' && <section className="page"><div className="page-heading"><div><div className="eyebrow">CREATIVE COMPASS</div><h1>Influences</h1><p>Capture what resonates, while keeping your story original.</p></div><button className="button primary" onClick={() => { const x = blankInfluence(); update(p => ({ ...p, influences: [...p.influences, x] })); setSelectedInfluence(x.id); }}><Plus size={17}/> Add influence</button></div><div className="info-banner"><LibraryBig size={19}/><span>Describe broad qualities you admire. The AI uses these as preferences and is instructed to avoid copying plots, characters, prose, or a creator’s style.</span></div>{project.influences.length === 0 ? <Empty title="What inspires this story?" description="Add a book, film, show, or other work—and why it matters to your project."/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">INFLUENCES <span>{project.influences.length}</span></div>{project.influences.map(x => <button key={x.id} className={currentInfluence?.id === x.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedInfluence(x.id)}><span className="list-number"><LibraryBig size={17}/></span><span><strong>{x.title}</strong><small>{x.medium}</small></span><ChevronRight size={15}/></button>)}</div>{currentInfluence && <div className="editor-panel"><div className="editor-top"><span>INFLUENCE</span><button className="icon-button danger" onClick={() => update(p => ({ ...p, influences: p.influences.filter(x => x.id !== currentInfluence.id) }))}><Trash2 size={17}/></button></div><div className="two-col"><Field label="Title" value={currentInfluence.title} onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, title: v } : x) }))}/><label className="field"><span>Medium</span><select value={currentInfluence.medium} onChange={e => update(p => ({ ...p, influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, medium: e.target.value } : x) }))}>{['Book', 'Film', 'TV series', 'Game', 'Other'].map(x => <option key={x}>{x}</option>)}</select></label></div><Field label="Why it resonates" value={currentInfluence.why} multiline placeholder="What broad themes, emotional qualities, or craft choices do you admire?" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, why: v } : x) }))}/><div className="subsection-heading"><div><h3>General source overview</h3><p>Optional public encyclopedia lookup and AI paraphrase. Review for accuracy.</p></div><button className="button secondary compact" disabled={!!busy} onClick={() => act('acquire-influence', () => acquireInfluence(currentInfluence))}><Sparkles size={15}/> Acquire overview</button></div><Field label="Factual summary" value={currentInfluence.factualSummary} multiline onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, factualSummary: v } : x) }))}/>{currentInfluence.sourceUrl && <a className="source-link" href={currentInfluence.sourceUrl} target="_blank" rel="noreferrer">View encyclopedia source ↗</a>}<Field label="Elements to avoid" value={currentInfluence.avoid} multiline placeholder="Specific tropes, plot devices, or similarities to avoid…" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, avoid: v } : x) }))}/></div>}</div>}</section>}
-      {view === 'settings' && <section className="page narrow"><div className="page-heading"><div><div className="eyebrow">PROJECT FOUNDATION</div><h1>Settings & AI</h1><p>Define the audience and creative boundaries for every generation.</p></div></div><div className="settings-card"><h2>Story profile</h2><div className="two-col"><Field label="Project title" value={project.title} onChange={v => update(p => markAllBooks({ ...p, title: v }, ['outline', 'summary', 'draft']))}/><label className="field"><span>Format</span><select value={project.format} onChange={e => update(p => markAllBooks({ ...p, format: e.target.value as Format }, ['outline', 'summary', 'draft']))}>{formats.map(x => <option key={x}>{x}</option>)}</select></label></div><Field label="Series premise" value={project.premise} multiline rows={5} placeholder="What is the heart of this story or series?" onChange={v => update(p => markAllBooks({ ...p, premise: v }, ['outline', 'summary', 'draft']))}/><div className="two-col"><Field label="Audience / demographics" value={project.audience} placeholder="e.g. adults, ages 8–12" onChange={v => update(p => markAllBooks({ ...p, audience: v }, ['outline', 'summary', 'draft']))}/><Field label="Reading level" value={project.readingLevel} placeholder="e.g. Grade 4, YA, general" onChange={v => update(p => markAllBooks({ ...p, readingLevel: v }, ['outline', 'summary', 'draft']))}/></div><Field label="Genres (comma separated)" value={project.genres.join(', ')} onChange={v => update(p => markAllBooks({ ...p, genres: v.split(',').map(x => x.trim()).filter(Boolean) }, ['outline', 'summary', 'draft']))}/><Field label="Tone" value={project.tone} placeholder="Lyrical, warm, suspenseful…" onChange={v => update(p => markAllBooks({ ...p, tone: v }, ['outline', 'summary', 'draft']))}/><Field label="Themes" value={project.themes} multiline onChange={v => update(p => markAllBooks({ ...p, themes: v }, ['outline', 'summary', 'draft']))}/><Field label="Content boundaries" value={project.boundaries} multiline placeholder="Topics, imagery, or intensity to avoid…" onChange={v => update(p => markAllBooks({ ...p, boundaries: v }, ['outline', 'summary', 'draft']))}/></div>
-        <div className="settings-card"><h2>AI provider</h2><p className="muted">AI is optional. Generation runs only when you click a Generate or Extract button.</p><div className="provider-toggle"><button className={config.provider === 'ollama' ? 'active' : ''} onClick={() => setConfig({ ...config, provider: 'ollama', model: 'llama3.2', endpoint: 'http://localhost:11434' })}>Local Ollama</button><button className={config.provider === 'openai' ? 'active' : ''} onClick={() => setConfig({ ...config, provider: 'openai', model: 'gpt-4.1-mini', endpoint: 'https://api.openai.com/v1' })}>OpenAI</button></div><div className="two-col"><Field label="Model" value={config.model} onChange={v => setConfig({ ...config, model: v })}/><Field label="API base URL" value={config.endpoint} onChange={v => setConfig({ ...config, endpoint: v })}/></div>{config.provider === 'openai' && <label className="field"><span>OpenAI API key (this tab only)</span><input type="password" autoComplete="off" value={config.apiKey} onChange={e => setConfig({ ...config, apiKey: e.target.value })} placeholder="sk-…"/></label>}<div className="info-banner compact"><CircleHelp size={18}/><span>{config.provider === 'openai' ? 'The key stays in memory and is sent directly from this browser to your chosen API endpoint. Never place a key in project files or GitHub Pages settings.' : 'Ollama must allow this browser origin. On GitHub Pages, HTTPS and browser security may require a local HTTPS proxy.'}</span></div></div>
-        <div className="settings-card"><h2>Project files</h2><p className="muted">Browser changes are cached locally. Sync writes separate JSON records into your chosen folder.</p><div className="settings-actions"><button className="button secondary" onClick={() => act('connect', connectFolder)}><FolderOpen size={16}/>{connected ? 'Change folder' : 'Connect folder'}</button>{connected && <><button className="button secondary" onClick={() => act('sync', syncFolder)}><RefreshCw size={16}/> Sync files</button><button className="button secondary" onClick={() => act('reload', reloadFolder)}><Download size={16}/> Reload folder</button></>}<button className="button secondary" onClick={() => downloadProject(project)}><Download size={16}/> Export snapshot</button><button className="button secondary" onClick={() => importRef.current?.click()}><CloudUpload size={16}/> Import snapshot</button></div></div></section>}
+      {view === 'sources' && <section className="page" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); act('sources', () => uploadSources(e.dataTransfer.files)); }}><div className="page-heading"><div><div className="eyebrow">YOUR STARTING MATERIAL</div><h1>Source documents</h1><p>Bring in outlines and notes. Extract world facts for your story bible.</p></div><button className="button primary" onClick={() => sourceRef.current?.click()}><CloudUpload size={17}/> Import files</button></div><div className="info-banner"><FileText size={19}/><span>Drop PDF, TXT, or Markdown here, or choose Import files. Text from PDFs is extracted locally in your browser. Connect a folder first if you want the original files preserved.</span></div>{project.sources.length === 0 ? <Empty title="No documents imported" description="Drop in your outline PDF and any world notes when they are ready." action={<button className="button primary" onClick={() => sourceRef.current?.click()}>Import files</button>}/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">DOCUMENTS <span>{project.sources.length}</span></div>{project.sources.map(s => <button key={s.id} className={currentSource?.id === s.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedSource(s.id)}><span className="list-number"><FileText size={18}/></span><span><strong>{s.name}</strong><small>{s.text.length.toLocaleString()} characters</small></span><ChevronRight size={15}/></button>)}</div>{currentSource && <div className="editor-panel"><div className="editor-top"><span>IMPORTED DOCUMENT</span><button className="icon-button danger" onClick={() => deleteSource(currentSource.id)}><Trash2 size={17}/></button></div><h2>{currentSource.name}</h2><p className="muted">Original: {currentSource.path || 'Text only — connect a folder to preserve originals on future imports'}</p><div className="source-actions"><button className="button secondary" disabled={!!busy} onClick={() => extractWorld(currentSource)}><Sparkles size={16}/> Extract worldbuilding</button>{currentSource.extracted && <span className="success-label">Extracted</span>}</div><label className="field"><span>Extracted text (editable)</span><textarea rows={20} value={currentSource.text} onChange={e => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), sources: p.sources.map(s => s.id === currentSource.id ? { ...s, text: e.target.value, extracted: false, updatedAt: now() } : s) }))} onBlur={() => update(p => ({ ...p, sources: p.sources.map(s => s.id === currentSource.id ? { ...s, analysisStatus: 'pending' } : s) }))}/></label></div>}</div>}</section>}
+      {view === 'sources' && currentSource && <SourceAnalysisPanel project={project} source={currentSource} paused={analysisPaused} busy={!!busy} onStatus={setGraphStatus} onAcceptAll={() => acceptAllSourceFindings(currentSource.id)} onReanalyze={() => update(p => ({ ...p, sources: p.sources.map(x => x.id === currentSource.id ? { ...x, analysisStatus: 'pending' } : x) }))} onEnrich={() => runAIAction('find relationships', () => enrichSource(currentSource))} onCreateCharacter={createCharacterFromMention} onApplyStructure={() => applySourceStructure(currentSource.id)}/>}
+      {view === 'influences' && <section className="page"><div className="page-heading"><div><div className="eyebrow">CREATIVE COMPASS</div><h1>Influences</h1><p>Capture what resonates, while keeping your story original.</p></div><button className="button primary" onClick={() => { const x = blankInfluence(); update(p => ({ ...p, influences: [...p.influences, x] })); setSelectedInfluence(x.id); }}><Plus size={17}/> Add influence</button></div><div className="info-banner"><LibraryBig size={19}/><span>Describe broad qualities you admire. The AI uses these as preferences and is instructed to avoid copying plots, characters, prose, or a creator’s style.</span></div>{project.influences.length === 0 ? <Empty title="What inspires this story?" description="Add a book, film, show, or other work—and why it matters to your project."/> : <div className="workspace-grid"><div className="collection-panel"><div className="panel-title">INFLUENCES <span>{project.influences.length}</span></div>{project.influences.map(x => <button key={x.id} className={currentInfluence?.id === x.id ? 'list-item selected' : 'list-item'} onClick={() => setSelectedInfluence(x.id)}><span className="list-number"><LibraryBig size={17}/></span><span><strong>{x.title}</strong><small>{x.medium}</small></span><ChevronRight size={15}/></button>)}</div>{currentInfluence && <div className="editor-panel"><div className="editor-top"><span>INFLUENCE</span><button className="icon-button danger" onClick={() => update(p => ({ ...p, influences: p.influences.filter(x => x.id !== currentInfluence.id) }))}><Trash2 size={17}/></button></div><div className="two-col"><Field label="Title" value={currentInfluence.title} onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, title: v } : x) }))}/><label className="field"><span>Medium</span><select value={currentInfluence.medium} onChange={e => update(p => ({ ...p, influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, medium: e.target.value } : x) }))}>{['Book', 'Film', 'TV series', 'Game', 'Other'].map(x => <option key={x}>{x}</option>)}</select></label></div><Field label="Why it resonates" value={currentInfluence.why} multiline placeholder="What broad themes, emotional qualities, or craft choices do you admire?" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, why: v } : x) }))}/><div className="subsection-heading"><div><h3>General source overview</h3><p>Optional public encyclopedia lookup and AI paraphrase. Review for accuracy.</p></div><button className="button secondary compact" disabled={!!busy} onClick={() => runAIAction('acquire-influence', () => acquireInfluence(currentInfluence))}><Sparkles size={15}/> Acquire overview</button></div><Field label="Factual summary" value={currentInfluence.factualSummary} multiline onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, factualSummary: v } : x) }))}/>{currentInfluence.sourceUrl && <a className="source-link" href={currentInfluence.sourceUrl} target="_blank" rel="noreferrer">View encyclopedia source ↗</a>}<Field label="Elements to avoid" value={currentInfluence.avoid} multiline placeholder="Specific tropes, plot devices, or similarities to avoid…" onChange={v => update(p => ({ ...markAllBooks(p, ['outline', 'summary', 'draft']), influences: p.influences.map(x => x.id === currentInfluence.id ? { ...x, avoid: v } : x) }))}/></div>}</div>}</section>}
+      {view === 'settings' && <section className="page narrow">
+        <div className="page-heading"><div><div className="eyebrow">SETTINGS</div><h1>Settings</h1><p>Choose the part of your project you want to configure.</p></div></div>
+        <div className="quick-grid settings-link-grid">
+          <button onClick={() => setView('story-profile')}><BookOpen size={21}/><strong>Story profile</strong><span>Format, audience, reading level, genres, and themes</span><ChevronRight size={16}/></button>
+          <button onClick={() => setView('ai-profiles')}><Sparkles size={21}/><strong>AI profiles</strong><span>Providers, models, context limits, and local downloads</span><ChevronRight size={16}/></button>
+          <button onClick={() => setView('project-files')}><FolderOpen size={21}/><strong>Project files</strong><span>Connect a folder, sync records, and manage snapshots</span><ChevronRight size={16}/></button>
+        </div>
+      </section>}
+      {view === 'story-profile' && <section className="page narrow">
+        <div className="page-heading"><div><div className="eyebrow">PROJECT FOUNDATION</div><h1>Story profile</h1><p>Define the audience and creative boundaries for every generation.</p></div></div>
+        <div className="settings-card"><div className="two-col"><Field label="Project title" value={project.title} onChange={v => update(p => markAllBooks({ ...p, title: v }, ['outline', 'summary', 'draft']))}/><label className="field"><span>Format</span><select value={project.format} onChange={e => update(p => markAllBooks({ ...p, format: e.target.value as Format }, ['outline', 'summary', 'draft']))}>{formats.map(x => <option key={x}>{x}</option>)}</select></label></div><Field label="Series premise" value={project.premise} multiline rows={5} placeholder="What is the heart of this story or series?" onChange={v => update(p => markAllBooks({ ...p, premise: v }, ['outline', 'summary', 'draft']))}/><div className="two-col"><Field label="Audience / demographics" value={project.audience} placeholder="e.g. adults, ages 8–12" onChange={v => update(p => markAllBooks({ ...p, audience: v }, ['outline', 'summary', 'draft']))}/><Field label="Reading level" value={project.readingLevel} placeholder="e.g. Grade 4, YA, general" onChange={v => update(p => markAllBooks({ ...p, readingLevel: v }, ['outline', 'summary', 'draft']))}/></div><Field label="Genres (comma separated)" value={project.genres.join(', ')} onChange={v => update(p => markAllBooks({ ...p, genres: v.split(',').map(x => x.trim()).filter(Boolean) }, ['outline', 'summary', 'draft']))}/><Field label="Tone" value={project.tone} placeholder="Lyrical, warm, suspenseful…" onChange={v => update(p => markAllBooks({ ...p, tone: v }, ['outline', 'summary', 'draft']))}/><Field label="Themes" value={project.themes} multiline onChange={v => update(p => markAllBooks({ ...p, themes: v }, ['outline', 'summary', 'draft']))}/><Field label="Content boundaries" value={project.boundaries} multiline placeholder="Topics, imagery, or intensity to avoid…" onChange={v => update(p => markAllBooks({ ...p, boundaries: v }, ['outline', 'summary', 'draft']))}/></div>
+      </section>}
+      {view === 'ai-profiles' && <section className="page narrow">
+        <div className="page-heading"><div><div className="eyebrow">MODEL SETTINGS</div><h1>AI profiles</h1><p>Choose and test the models used for writing and tools.</p></div></div>
+        <ProviderSettings config={config} profiles={profiles} folder={folder} onSelect={setSelectedProfileId} onChange={setConfig} onAdd={profile => { setProfiles(previous => [...previous, profile]); setSelectedProfileId(profile.id); }} onDelete={id => { setProfiles(previous => previous.filter(x => x.id !== id)); setSelectedProfileId("browser"); }} onModelDownloaded={(id, path) => setProfiles(previous => previous.map(profile => profile.id === id && profile.provider === 'browser' ? { ...profile, model: path } : profile))} onConnectFolder={() => void act('connect', connectFolder)}/>
+        <ImageGeneratorSettings config={imageSettings} onChange={setImageSettings}/>
+      </section>}
+      {view === 'project-files' && <section className="page narrow">
+        <div className="page-heading"><div><div className="eyebrow">LOCAL WORKSPACE</div><h1>Project files</h1><p>Connect, sync, import, and export your project files.</p></div></div>
+        <div className="settings-card"><p className="muted">Browser changes are cached locally. Sync writes separate JSON records into your chosen folder.</p><div className="settings-actions"><button className="button secondary" disabled={!!busy} onClick={() => act('connect', connectFolder)}><FolderOpen size={16}/>{connected ? 'Change folder' : 'Connect folder'}</button>{connected && <><button className="button secondary" disabled={!!busy} onClick={() => act('sync', syncFolder)}><RefreshCw size={16}/> Sync files</button><button className="button secondary" disabled={!!busy} onClick={() => act('reload', reloadFolder)}><Download size={16}/> Reload folder</button></>}<button className="button secondary" onClick={() => downloadProject(project)}><Download size={16}/> Export snapshot</button><button className="button secondary" onClick={() => importRef.current?.click()}><CloudUpload size={16}/> Import snapshot</button></div>{folderHint && <p className="folder-hint" role="status">{folderHint}</p>}</div>
+      </section>}
     </main>
     <input ref={importRef} hidden type="file" accept=".json,application/json" onChange={e => { const file = e.target.files?.[0]; if (file) act('import', () => importSnapshot(file)); e.target.value = ''; }}/>
     <input ref={sourceRef} hidden type="file" multiple accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown" onChange={e => { const files = e.target.files; act('sources', () => uploadSources(files)); e.target.value = ''; }}/>
     <input ref={imageRef} hidden type="file" multiple accept="image/*" onChange={e => { const files = e.target.files; act('images', () => uploadImages(files)); e.target.value = ''; }}/>
-    {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')}><X size={16}/></button></div>}
+    <ToastViewport/>
+    <TooltipLayer/>
     {!!busy && <div className="busy-indicator"><Sparkles size={16}/> Working on {busy.replaceAll('-', ' ')}…</div>}
+    {dialog === 'ai' && <ModelTestDialog config={config} profiles={profiles} intent={intent} onSelect={setSelectedProfileId} onClose={closeDialog} onSettings={() => setView('ai-profiles')}/>}
     {showHelp && <div className="modal-backdrop" onClick={() => setShowHelp(false)}><div className="modal" onClick={e => e.stopPropagation()}><button className="modal-close" onClick={() => setShowHelp(false)}><X size={20}/></button><div className="eyebrow">THE WORKFLOW</div><h2>Write in layers</h2><ol><li><strong>Set the foundation.</strong> Choose format, audience, reading level, and premise.</li><li><strong>Build the bible.</strong> Add characters, world notes, influences, and source documents.</li><li><strong>Shape each book.</strong> Connect earlier or later books as references, then create chapter outlines.</li><li><strong>Deepen and draft.</strong> Add summaries and full chapter text. Changed canon flags downstream work for review.</li><li><strong>Sync your files.</strong> Connect a folder to keep editable JSON and uploaded assets on your computer.</li></ol><p>Future audio and screenplay work can build on the same story files; this first version focuses on prose.</p></div></div>}
   </div>;
 }

@@ -7,11 +7,31 @@ export type Character = Entity & {
   imagePaths: string[];
 };
 export type WorldNote = Entity & { title: string; category: 'Place' | 'Culture' | 'History' | 'Rule' | 'Other'; details: string };
+export type ContinuityIssue = { id: string; category: string; severity: 'high' | 'medium' | 'low'; summary: string; evidence: string; paths: string[]; question: string; status: 'open' | 'resolved' | 'dismissed'; resolution: string };
+export type ContinuityReport = Entity & { title: string; checkedPaths: string[]; issues: ContinuityIssue[]; summary: string; model: string };
 export type Influence = Entity & {
   title: string; medium: string; why: string; factualSummary: string;
   sourceUrl: string; avoid: string;
 };
-export type Source = Entity & { name: string; path: string; text: string; extracted: boolean };
+export type Source = Entity & { name: string; path: string; text: string; extracted: boolean; analysisStatus?: 'pending' | 'running' | 'ready' | 'error'; analysisError?: string };
+export type ProposalStatus = 'proposed' | 'accepted' | 'dismissed';
+export type StoryUnit = { id: string; sourceId: string; kind: 'book' | 'part' | 'story' | 'chapter' | 'outline' | 'theme'; title: string; parentId?: string; ordinal?: number; evidence: string; status: ProposalStatus; stale?: boolean };
+export type StoryArc = { id: string; sourceId: string; title: string; unitId?: string; startUnitId?: string; endUnitId?: string; evidence: string; status: ProposalStatus; stale?: boolean };
+export type StoryMention = { id: string; sourceId: string; kind: 'character' | 'place'; name: string; entityKey: string; unitId?: string; characterId?: string; age?: string; health?: string; location?: string; timeframe?: string; evidence: string; status: ProposalStatus; stale?: boolean };
+export type StoryEvent = { id: string; sourceId: string; title: string; unitId?: string; timeframe?: string; location?: string; characterNames: string[]; evidence: string; status: ProposalStatus; stale?: boolean };
+export type StorySuggestion = { id: string; sourceId?: string; title: string; detail: string; category: WorldNote['category']; evidence?: string; status: ProposalStatus };
+export type StoryGraph = { units: StoryUnit[]; arcs: StoryArc[]; mentions: StoryMention[]; events: StoryEvent[]; suggestions: StorySuggestion[] };
+export const emptyStoryGraph = (): StoryGraph => ({ units: [], arcs: [], mentions: [], events: [], suggestions: [] });
+export function acceptSourceFindings(graph: StoryGraph, sourceId: string): StoryGraph {
+  const shouldAccept = (item: { sourceId: string; status: ProposalStatus; stale?: boolean }) => item.sourceId === sourceId && item.status === 'proposed' && !item.stale;
+  return {
+    ...graph,
+    units: graph.units.map(item => shouldAccept(item) ? { ...item, status: 'accepted' as const } : item),
+    arcs: graph.arcs.map(item => shouldAccept(item) ? { ...item, status: 'accepted' as const } : item),
+    mentions: graph.mentions.map(item => shouldAccept(item) ? { ...item, status: 'accepted' as const } : item),
+    events: graph.events.map(item => shouldAccept(item) ? { ...item, status: 'accepted' as const } : item),
+  };
+}
 export type Chapter = Entity & {
   number: number; title: string; outline: string; summary: string; draft: string;
   review: Stage[];
@@ -25,7 +45,7 @@ export type Project = {
   audience: string; readingLevel: string; genres: string[]; tone: string;
   themes: string; boundaries: string; updatedAt: string;
   characters: Character[]; world: WorldNote[]; influences: Influence[];
-  sources: Source[]; books: Book[];
+  sources: Source[]; books: Book[]; reviews: ContinuityReport[]; storyGraph: StoryGraph;
 };
 export const now = () => new Date().toISOString();
 export const uid = () => crypto.randomUUID();
@@ -41,7 +61,7 @@ export const newProject = (): Project => ({
   schemaVersion: 1, id: uid(), title: 'Rivers of Memory', format: 'Trilogy',
   premise: '', audience: 'Adult', readingLevel: 'General', genres: [],
   tone: '', themes: '', boundaries: '', updatedAt: now(),
-  characters: [], world: [], influences: [], sources: [],
+  characters: [], world: [], influences: [], sources: [], reviews: [], storyGraph: emptyStoryGraph(),
   books: [makeBook(1), makeBook(2), makeBook(3)],
 });
 export function markChapters(book: Book, stages: Stage[]): Book {
@@ -53,11 +73,12 @@ export function markAllBooks(project: Project, stages: Stage[]): Project {
   return { ...project, books: project.books.map(book => markChapters(book, stages)) };
 }
 const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
+const acceptedGraph = (graph?: StoryGraph) => graph ? [graph.units, graph.arcs, graph.mentions, graph.events].map(items => items.filter(x => x.status === 'accepted')) : [];
 export function reconcileChanges(previous: Project, next: Project): Project {
   if (previous.id !== next.id) return next;
   const globalChanged = changed(
-    [previous.title, previous.format, previous.premise, previous.audience, previous.readingLevel, previous.genres, previous.tone, previous.themes, previous.boundaries, previous.characters, previous.world, previous.influences, previous.sources],
-    [next.title, next.format, next.premise, next.audience, next.readingLevel, next.genres, next.tone, next.themes, next.boundaries, next.characters, next.world, next.influences, next.sources],
+    [previous.title, previous.format, previous.premise, previous.audience, previous.readingLevel, previous.genres, previous.tone, previous.themes, previous.boundaries, previous.characters, previous.world, previous.influences, previous.sources.map(x => [x.id, x.name, x.path, x.text]), acceptedGraph(previous.storyGraph)],
+    [next.title, next.format, next.premise, next.audience, next.readingLevel, next.genres, next.tone, next.themes, next.boundaries, next.characters, next.world, next.influences, next.sources.map(x => [x.id, x.name, x.path, x.text]), acceptedGraph(next.storyGraph)],
   );
   if (globalChanged) next = markAllBooks(next, ['outline', 'summary', 'draft']);
   const changedBooks = new Set<string>();
@@ -101,8 +122,10 @@ export function projectFiles(project: Project): Record<string, string> {
       bookIds: project.books.map(x => x.id),
     }),
   };
+  files['world/story-graph.json'] = json(project.storyGraph || emptyStoryGraph());
   project.characters.forEach(x => files[`world/characters/${x.id}.json`] = json(x));
   project.world.forEach(x => files[`world/notes/${x.id}.json`] = json(x));
+  (project.reviews || []).forEach(x => files[`world/reviews/${x.id}.json`] = json(x));
   project.influences.forEach(x => files[`world/influences/${x.id}.json`] = json(x));
   project.sources.forEach(x => files[`sources/${x.id}.json`] = json(x));
   project.books.forEach(book => {
@@ -126,6 +149,8 @@ export function parseProjectFiles(files: Record<string, string>): Project {
     .map(([, value]) => JSON.parse(value) as T);
   const characters = values<Character>('world/characters/');
   const world = values<WorldNote>('world/notes/');
+  const reviews = values<ContinuityReport>('world/reviews/');
+  const storyGraph = files['world/story-graph.json'] ? JSON.parse(files['world/story-graph.json']) as StoryGraph : emptyStoryGraph();
   const influences = values<Influence>('world/influences/');
   const sources = values<Source>('sources/');
   const books = Object.entries(files).filter(([path]) => /^books\/[^/]+\/book\.json$/.test(path))
@@ -140,6 +165,6 @@ export function parseProjectFiles(files: Record<string, string>): Project {
     }));
   return {
     ...meta, genres: meta.genres || [], characters, world, influences,
-    sources, books: books.sort((a, b) => a.position - b.position),
+    sources, reviews, storyGraph, books: books.sort((a, b) => a.position - b.position),
   } as Project;
 }
