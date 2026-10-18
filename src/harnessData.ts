@@ -86,6 +86,8 @@ export type HarnessIdentity = {
   name: string;
   focus: 'coding' | 'research' | 'review' | 'general';
   instructions: string;
+  icon?: 'person' | 'robot' | 'code' | 'brain' | 'compass' | 'shield' | 'spark';
+  avatarPath?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -166,6 +168,8 @@ export type HarnessManifest = {
   identities: HarnessIdentity[];
   chatIdentityId: string;
   modelPreferences: ModelPreferences;
+  /** Model and agent tools may read, but not change, this workspace. Person-initiated edits remain available. */
+  workspaceToolAccess?: 'full' | 'read-only';
   toolProfiles?: ToolPolicyProfile[];
 };
 
@@ -174,12 +178,13 @@ export const DEFAULT_WORKSPACE_ID = 'browser-home';
 export const MESSAGE_CHUNK_SIZE = 24;
 export const isoNow = () => new Date().toISOString();
 export const newId = () => crypto.randomUUID();
+export const identityAvatarPath = (id: string) => `harness/avatars/${id}.png`;
 
 export function defaultIdentities(now = isoNow()): HarnessIdentity[] {
   return [
-    { id: 'ada', name: 'Ada', focus: 'coding', instructions: 'Careful coding partner. Inspect relevant files before editing, make focused changes, and test meaningful behavior. Explain what changed and any remaining risk.', createdAt: now, updatedAt: now },
-    { id: 'lumen', name: 'Lumen', focus: 'research', instructions: 'Precise research partner. Trace claims to available sources, separate evidence from inference, and point out uncertainty.', createdAt: now, updatedAt: now },
-    { id: 'trace', name: 'Trace', focus: 'review', instructions: 'Quality reviewer. Look for concrete bugs, contradictions, and missing checks. Prioritize issues by impact and cite the relevant files.', createdAt: now, updatedAt: now },
+    { id: 'ada', name: 'Ada', focus: 'coding', icon: 'code', instructions: 'Careful coding partner. Inspect relevant files before editing, make focused changes, and test meaningful behavior. Explain what changed and any remaining risk.', createdAt: now, updatedAt: now },
+    { id: 'lumen', name: 'Lumen', focus: 'research', icon: 'compass', instructions: 'Precise research partner. Trace claims to available sources, separate evidence from inference, and point out uncertainty.', createdAt: now, updatedAt: now },
+    { id: 'trace', name: 'Trace', focus: 'review', icon: 'shield', instructions: 'Quality reviewer. Look for concrete bugs, contradictions, and missing checks. Prioritize issues by impact and cite the relevant files.', createdAt: now, updatedAt: now },
   ];
 }
 
@@ -196,7 +201,7 @@ export function createManifest(id = DEFAULT_WORKSPACE_ID, name = 'My workspace')
   return {
     version: 1, id, name, createdAt, updatedAt: createdAt,
     projects: [{ id: DEFAULT_PROJECT_ID, name: 'Home', description: 'Conversations outside a project.', instructions: '', createdAt, updatedAt: createdAt }],
-    agents: [], identities: defaultIdentities(createdAt), chatIdentityId: 'ada', toolProfiles: [],
+    agents: [], identities: defaultIdentities(createdAt), chatIdentityId: 'ada', toolProfiles: [], workspaceToolAccess: 'full',
     modelPreferences: { chat: [], code: [], image: [], speech: [], transcription: [] },
   };
 }

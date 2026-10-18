@@ -97,18 +97,45 @@ async function readTree(dir: FileSystemDirectoryHandle, prefix = ''): Promise<Re
   }
   return files;
 }
-async function directoryAt(root: FileSystemDirectoryHandle, parts: string[]) {
+const directoryHandles = new WeakMap<FileSystemDirectoryHandle, Map<string, Promise<FileSystemDirectoryHandle>>>();
+const MAX_DIRECTORY_HANDLES = 256;
+async function directoryAt(root: FileSystemDirectoryHandle, parts: string[], create: boolean) {
+  let handles = directoryHandles.get(root);
+  if (!handles) { handles = new Map(); directoryHandles.set(root, handles); }
   let current = root;
-  for (const part of parts) current = await current.getDirectoryHandle(part, { create: true });
+  let path = '';
+  for (const part of parts) {
+    path = path ? `${path}/${part}` : part;
+    let next = handles.get(path);
+    if (!next) {
+      next = current.getDirectoryHandle(part, { create });
+      handles.set(path, next);
+      if (handles.size > MAX_DIRECTORY_HANDLES) handles.delete(handles.keys().next().value!);
+    } else {
+      handles.delete(path);
+      handles.set(path, next);
+    }
+    try { current = await next; }
+    catch (error) { if (handles.get(path) === next) handles.delete(path); throw error; }
+  }
   return current;
 }
+function missingEntry(error: unknown): boolean { return error instanceof DOMException && error.name === 'NotFoundError'; }
 export async function writeBlob(root: FileSystemDirectoryHandle, path: string, blob: Blob) {
   const parts = path.split('/');
   const name = parts.pop()!;
-  const dir = await directoryAt(root, parts);
-  const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
-  await writer.write(blob);
-  await writer.close();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const dir = await directoryAt(root, parts, true);
+      const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
+      await writer.write(blob);
+      await writer.close();
+      return;
+    } catch (error) {
+      if (attempt || !missingEntry(error)) throw error;
+      directoryHandles.delete(root); // A folder may have been replaced outside this tab.
+    }
+  }
 }
 export async function writeProject(root: FileSystemDirectoryHandle, project: Project) {
   const files = projectFiles(project);
@@ -130,10 +157,14 @@ export async function readProject(root: FileSystemDirectoryHandle): Promise<Proj
 export async function readBlob(root: FileSystemDirectoryHandle, path: string): Promise<File> {
   const parts = path.split('/');
   const name = parts.pop()!;
-  let dir = root;
-  for (const part of parts) dir = await dir.getDirectoryHandle(part);
-  try { return await (await dir.getFileHandle(name)).getFile(); }
+  const read = async () => (await (await directoryAt(root, parts, false)).getFileHandle(name)).getFile();
+  try { return await read(); }
   catch (error) {
+    if (missingEntry(error) && directoryHandles.has(root)) {
+      directoryHandles.delete(root);
+      try { return await read(); }
+      catch (retryError) { error = retryError; }
+    }
     if (path.startsWith('models/') && parts.length === 1 && name.toLowerCase().endsWith('.gguf') && error instanceof DOMException && error.name === 'NotFoundError') {
       const { modelStorageDirectory } = await import('./modelFolders.ts');
       return (await (await modelStorageDirectory(root, name)).getFileHandle(name)).getFile();

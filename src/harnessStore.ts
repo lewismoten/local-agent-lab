@@ -2,8 +2,10 @@ import { readBlob, writeBlob } from './storage.ts';
 import { searchableMessageText } from './harnessCompaction.ts';
 import { cleanWorkspaceSettings, workspaceSettings, type WorkspaceSettings } from './harnessSettings.ts';
 import type { ResponseDiagnostic } from './harnessResponseDiagnostics.ts';
+import { validateTasks, type TaskRecord } from './harnessTasks.ts';
+import { journalDate, journalFact, validJournalDay, validJournalIndex, type JournalDay, type JournalIndex } from './harnessJournal.ts';
 import {
-  MESSAGE_CHUNK_SIZE, addSearchBits, chunkSearchBits, chunkSearchIndexNeedsUpgrade, createManifest, createSearchTermProbe, defaultIdentities, isoNow, newId,
+  MESSAGE_CHUNK_SIZE, addSearchBits, chunkSearchBits, chunkSearchIndexNeedsUpgrade, createManifest, createSearchTermProbe, defaultIdentities, identityAvatarPath, isoNow, newId,
   type ConversationMeta, type HarnessManifest, type HarnessMessage, type HarnessProject, type MemoryRecord,
 } from './harnessData.ts';
 
@@ -22,6 +24,9 @@ const INDEX_GROUP_SIZE = 64;
 const chunkIndexPath = (projectId: string, sessionId: string, group: number) => `${ROOT}/projects/${projectId}/sessions/${sessionId}/search/${String(group).padStart(6, '0')}.json`;
 type ChunkIndex = { version: 1; chunks: string[] };
 const memoryPath = `${ROOT}/memory.json`;
+const tasksPath = `${ROOT}/tasks.json`;
+const journalIndexPath = `${ROOT}/journal/index.json`;
+const journalDayPath = (date: string) => `${ROOT}/journal/days/${date}.json`;
 const settingsPath = `${ROOT}/settings.json`;
 const cacheKey = (workspaceId: string, path: string) => `${workspaceId}:${path}`;
 
@@ -131,6 +136,8 @@ export class HarnessStore {
   private readonly sessionWrites = new Map<string, Promise<void>>();
   private manifestWrites: Promise<void> = Promise.resolve();
   private memoryWrites: Promise<void> = Promise.resolve();
+  private tasksWrites: Promise<void> = Promise.resolve();
+  private journalWrites: Promise<void> = Promise.resolve();
   constructor(workspaceId: string, folder: FileSystemDirectoryHandle | null) {
     validId(workspaceId);
     this.workspaceId = workspaceId;
@@ -151,6 +158,21 @@ export class HarnessStore {
     if (this.folder) { await writeBlob(this.folder, path, new Blob([JSON.stringify(value)], { type: 'application/json' })); return; }
     await cacheWrite(cacheKey(this.workspaceId, path), value);
   }
+  async identityAvatar(id: string): Promise<Blob | null> {
+    validId(id);
+    const path = identityAvatarPath(id);
+    if (!this.folder) return cacheRead<Blob>(cacheKey(this.workspaceId, path));
+    try { return await readBlob(this.folder, path); }
+    catch (error) { if (isMissing(error)) return null; throw error; }
+  }
+  async saveIdentityAvatar(id: string, image: Blob): Promise<string> {
+    validId(id);
+    if (image.type !== 'image/png' || !image.size || image.size > 512_000) throw new Error('Avatar must be a PNG no larger than 500 KB.');
+    const path = identityAvatarPath(id);
+    if (this.folder) await writeBlob(this.folder, path, image);
+    else await cacheWrite(cacheKey(this.workspaceId, path), image);
+    return path;
+  }
   async manifest(): Promise<HarnessManifest> {
     const saved = await this.read<HarnessManifest>(manifestPath);
     if (supportedManifest(saved)) return {
@@ -158,6 +180,7 @@ export class HarnessStore {
       agents: Array.isArray(saved.agents) ? saved.agents : [],
       identities: Array.isArray(saved.identities) ? saved.identities : defaultIdentities(saved.createdAt),
       chatIdentityId: typeof saved.chatIdentityId === 'string' ? saved.chatIdentityId : '',
+      workspaceToolAccess: saved.workspaceToolAccess === 'read-only' ? 'read-only' : 'full',
       modelPreferences: {
         chat: Array.isArray(saved.modelPreferences?.chat) ? saved.modelPreferences.chat : [],
         code: Array.isArray(saved.modelPreferences?.code) ? saved.modelPreferences.code : [],
@@ -295,7 +318,7 @@ export class HarnessStore {
     };
     return updated;
   }
-  async appendConversationMessage(meta: ConversationMeta, message: Omit<HarnessMessage, 'seq'>): Promise<{ meta: ConversationMeta; sessions: ConversationMeta[] }> {
+  async appendConversationMessage(meta: ConversationMeta, message: Omit<HarnessMessage, 'seq'>): Promise<{ meta: ConversationMeta; sessions: ConversationMeta[]; journalWarning?: string }> {
     let appended: ConversationMeta | null = null;
     const sessions = await this.updateSessions(meta.projectId, async current => {
       const latest = current.find(item => item.id === meta.id);
@@ -307,7 +330,10 @@ export class HarnessStore {
       appended = await this.appendMessage(recovered, message);
       return [appended, ...current.filter(item => item.id !== meta.id)];
     });
-    return { meta: appended!, sessions };
+    let journalWarning: string | undefined;
+    try { await this.recordJournalMessage(appended!, { ...message, seq: appended!.messageCount - 1 }); }
+    catch (error) { journalWarning = `The message was saved, but its journal update failed: ${error instanceof Error ? error.message : String(error)}`; }
+    return { meta: appended!, sessions, journalWarning };
   }
   async recoverConversation(meta: ConversationMeta): Promise<ConversationMeta> {
     validId(meta.projectId); validId(meta.id);
@@ -436,6 +462,86 @@ export class HarnessStore {
     return task;
   }
   async saveMemory(records: MemoryRecord[]): Promise<void> { await this.updateMemory(() => records); }
+  async journalIndex(): Promise<JournalIndex> {
+    const saved = await this.read<unknown>(journalIndexPath);
+    if (saved === null) return { version: 1, enabled: false, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', dates: [] };
+    if (!validJournalIndex(saved)) throw new Error('Journal settings use an unsupported format. The existing file was left untouched.');
+    return saved;
+  }
+  async journalDay(date: string): Promise<JournalDay | null> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Invalid journal date.');
+    const saved = await this.read<unknown>(journalDayPath(date));
+    if (saved === null) return null;
+    if (!validJournalDay(saved) || saved.date !== date) throw new Error(`Journal entry for ${date} uses an unsupported format.`);
+    return saved;
+  }
+  private async updateJournal<T>(change: () => Promise<T>): Promise<T> {
+    const task = this.journalWrites.catch(() => {}).then(async () => {
+      const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+      return locks ? locks.request(`local-agent-lab:journal:${this.workspaceId}`, change) : change();
+    });
+    this.journalWrites = task.then(() => {}, () => {});
+    return task;
+  }
+  async setJournalEnabled(enabled: boolean, expectedCurrent?: boolean): Promise<JournalIndex> {
+    return this.updateJournal(async () => {
+      const current = await this.journalIndex();
+      if (expectedCurrent !== undefined && current.enabled !== expectedCurrent) throw new Error('Journal setting changed during review. Read it again before changing it.');
+      const next = { ...current, enabled };
+      await this.write(journalIndexPath, next);
+      return next;
+    });
+  }
+  async remapJournalConversation(source: Pick<ConversationMeta, 'projectId' | 'id'>, destination: Pick<ConversationMeta, 'projectId' | 'id'>): Promise<void> {
+    validId(source.projectId); validId(source.id); validId(destination.projectId); validId(destination.id);
+    await this.updateJournal(async () => {
+      const index = await this.journalIndex();
+      if (!index.dates.length) return;
+      const from = `${source.projectId}:${source.id}`;
+      const target = { projectId: destination.projectId, sessionId: destination.id };
+      const redirects = { ...index.redirects };
+      for (const [key, value] of Object.entries(redirects)) if (`${value.projectId}:${value.sessionId}` === from) redirects[key] = target;
+      redirects[from] = target;
+      const next = { ...index, redirects };
+      if (!validJournalIndex(next)) throw new Error('The journal has reached its conversation move limit.');
+      await this.write(journalIndexPath, next);
+    });
+  }
+  async recordJournalMessage(meta: ConversationMeta, message: HarnessMessage): Promise<void> {
+    await this.updateJournal(async () => {
+      const index = await this.journalIndex();
+      if (!index.enabled) return;
+      const date = journalDate(message.createdAt, index.timeZone);
+      const existing = await this.journalDay(date);
+      const day: JournalDay = existing || { version: 1, date, updatedAt: message.createdAt, facts: [] };
+      if (!day.facts.some(fact => fact.id === message.id)) {
+        const next: JournalDay = { ...day, updatedAt: isoNow(), facts: [...day.facts, journalFact(meta, message)] };
+        if (!validJournalDay(next)) throw new Error('This journal day reached its record limit.');
+        await this.write(journalDayPath(date), next);
+      }
+      if (!index.dates.includes(date)) await this.write(journalIndexPath, { ...index, dates: [...index.dates, date].sort().reverse() });
+    });
+  }
+  async tasks(): Promise<TaskRecord[]> {
+    const saved = await this.read<{ version: number; tasks: unknown }>(tasksPath);
+    if (saved === null) return [];
+    if (saved.version !== 1 || !validateTasks(saved.tasks)) throw new Error('Workspace tasks use an unsupported format. The existing file was left untouched.');
+    return saved.tasks;
+  }
+  async updateTasks(change: (current: TaskRecord[]) => TaskRecord[] | Promise<TaskRecord[]>): Promise<TaskRecord[]> {
+    const persist = async () => {
+      const next = await change(await this.tasks());
+      if (!validateTasks(next)) throw new Error('A task exceeds the workspace task limits.');
+      await this.write(tasksPath, { version: 1, tasks: next });
+      return next;
+    };
+    const task = this.tasksWrites.catch(() => {}).then(async () => {
+      const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+      return locks ? locks.request(`local-agent-lab:tasks:${this.workspaceId}`, persist) : persist();
+    });
+    this.tasksWrites = task.then(() => {}, () => {});
+    return task;
+  }
   async saveResponseDiagnostic(projectId: string, sessionId: string, messageId: string, report: ResponseDiagnostic): Promise<void> {
     validId(projectId); validId(sessionId); validId(messageId);
     if ((report.version !== 1 && report.version !== 2) || new Blob([JSON.stringify(report)]).size > 16_000_000) throw new Error('Response diagnostic exceeds the 16 MB limit.');
@@ -479,9 +585,16 @@ export class HarnessStore {
         checkStopped();
         const oldPath = chunkPath(source.projectId, source.id, number);
         const newPath = chunkPath(destinationProjectId, copied.id, number);
-        if (this.folder) await writeBlob(this.folder, newPath, await readBlob(this.folder, oldPath));
-        else await this.write(newPath, await this.chunk(source.projectId, source.id, number));
-        for (const message of await this.chunk(source.projectId, source.id, number)) {
+        let messages: HarnessMessage[];
+        if (this.folder) {
+          const blob = await readBlob(this.folder, oldPath);
+          messages = JSON.parse(await blob.text()) as HarnessMessage[];
+          await writeBlob(this.folder, newPath, blob);
+        } else {
+          messages = await this.chunk(source.projectId, source.id, number);
+          await this.write(newPath, messages);
+        }
+        for (const message of messages) {
           if (!message.hasDiagnostics) continue;
           const oldDiagnostic = diagnosticPath(source.projectId, source.id, message.id);
           const newDiagnostic = diagnosticPath(destinationProjectId, copied.id, message.id);

@@ -17,6 +17,7 @@ const numberArg = (name, fallback) => {
 };
 const targetBytes = Math.floor(numberArg('--mb', 100) * 1024 * 1024);
 const latencyMs = numberArg('--latency-ms', 0);
+if (targetBytes <= 0) throw new Error('--mb must be greater than zero.');
 const pause = () => latencyMs ? new Promise(resolve => setTimeout(resolve, latencyMs)) : Promise.resolve();
 const elapsed = async (label, action) => {
   const start = performance.now();
@@ -107,6 +108,8 @@ try {
   assert.equal(copy.messageCount, count);
   assert.equal((await store.recentMessages(copy, 1))[0].seq, count - 1);
   assert.equal((await store.searchMessages(copy, 'ancient_unique_marker', 1))[0].seq, 12);
-  console.log(`  Copy I/O: ${stats.lookups - copyBefore.lookups} lookups, ${stats.reads - copyBefore.reads} reads, ${stats.writes - copyBefore.writes} writes`);
+  const copyReads = stats.reads - copyBefore.reads;
+  assert.ok(copyReads <= Math.ceil(count / MESSAGE_CHUNK_SIZE) + 2 * Math.ceil(count / MESSAGE_CHUNK_SIZE / 64) + 10, `Copy reread source chunks: ${copyReads} reads`);
+  console.log(`  Copy I/O: ${stats.lookups - copyBefore.lookups} lookups, ${copyReads} reads, ${stats.writes - copyBefore.writes} writes`);
   console.log(`Verified ${(bytes / 1048576).toFixed(1)} MiB across ${count} messages and ${Math.ceil(count / MESSAGE_CHUNK_SIZE)} chunks.`);
 } finally { await rm(directory, { recursive: true, force: true }); }

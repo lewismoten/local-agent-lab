@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { assertToolAllowed, detachToolProfile, effectiveConversationToolPermissions, effectiveToolPermissions, filterPermittedTools, toolPermission } from '../src/harnessToolPermissions.ts';
 import { browserFileTools } from '../src/harnessTools.ts';
 import { authorizeToolCall, clearSessionToolGrants } from '../src/harnessToolApprovals.ts';
+import { parseReadOnlyShell, shellCommandPermission } from '../src/harnessShell.ts';
 
 test('project tool policy defaults to allow and can block a specific tool', () => {
   const project = { id: 'home', name: 'Home', toolPermissions: { write_file: 'deny' } };
@@ -107,4 +108,29 @@ test('blocked and aborted approvals never reach an approval callback', async () 
   const controller = new AbortController(); controller.abort();
   await assert.rejects(authorizeToolCall({ ...base, name: 'read_file', signal: controller.signal }), /AbortError/);
   assert.equal(prompts, 0);
+});
+
+test('shell command permission asks for the selected command and honors a parent block', async () => {
+  const project = { id: 'home', toolPermissions: { shell_rg: 'ask', shell_cat: 'deny' } };
+  const scope = { projects: [project], defaultProjectId: 'home', workspaceAccess: false };
+  const requests = [];
+  const approve = async request => { requests.push(request.name); return true; };
+  const runGrants = new Set();
+  const command = parseReadOnlyShell('rg "hello world" /workspace/src');
+  await authorizeToolCall({ scope, name: 'shell_readonly', arguments: { command }, projectId: 'home', sessionKey: 'shell-test', runGrants, approve });
+  await authorizeToolCall({ scope, name: shellCommandPermission(command.name), arguments: { command: 'rg "hello world" /workspace/src' }, projectId: 'home', sessionKey: 'shell-test', runGrants, approve });
+  assert.deepEqual(requests, ['shell_rg']);
+  await assert.rejects(authorizeToolCall({ scope, name: 'shell_cat', arguments: {}, projectId: 'home', sessionKey: 'shell-test', runGrants, approve }), /blocked/);
+  project.toolPermissions.shell_readonly = 'deny';
+  await assert.rejects(authorizeToolCall({ scope, name: 'shell_readonly', arguments: {}, projectId: 'home', sessionKey: 'shell-test', runGrants, approve }), /blocked/);
+});
+
+test('workspace read-only mode blocks model writes across projects and workspace scope', () => {
+  const scope = { projects: [{ id: 'home', toolPermissions: { write_file: 'allow', generate_image: 'allow' } }], defaultProjectId: 'home', workspaceAccess: true, workspaceReadOnly: true };
+  assert.equal(toolPermission(scope, 'read_file'), 'allow');
+  assert.equal(toolPermission(scope, 'write_file'), 'deny');
+  assert.equal(toolPermission(scope, 'generate_image'), 'deny');
+  assert.equal(toolPermission(scope, 'claim_task'), 'deny');
+  assert.deepEqual(filterPermittedTools(scope, ['read_file', 'write_file', 'generate_image', 'claim_task'].map(name => ({ type: 'function', function: { name } }))).map(item => item.function.name), ['read_file']);
+  assert.throws(() => assertToolAllowed(scope, 'write_file'), /blocked/);
 });

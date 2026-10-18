@@ -175,12 +175,14 @@ export const prismEngineManager = {
       else publish({ installed: false, error: error instanceof Error ? error.message : String(error), status: 'error' });
     }
   },
-  async queue(folder: FileSystemDirectoryHandle) {
+  async queue(folder: FileSystemDirectoryHandle, waitForCompletion = true) {
     if (state.folder === folder && state.installed || active) return;
     const dir = await engineDirectory(folder, 'PrismML', true);
     await saveQueue(dir, true);
     publish({ folder, installed: false, status: 'queued', error: '' });
-    await this.resume(folder);
+    const completion = this.resume(folder);
+    if (waitForCompletion) await completion;
+    else void completion.catch(error => showToast(`Engine download failed: ${error instanceof Error ? error.message : String(error)}`, 'error'));
   },
   async resume(folder: FileSystemDirectoryHandle) {
     if (active || state.folder === folder && state.installed) return;

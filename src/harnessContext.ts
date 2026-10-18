@@ -1,7 +1,7 @@
 import { completeMetadata, parseJson, type AIConfig, type ChatTurn } from './ai.ts';
 import { browserContextWindow } from './browserContext.ts';
 import { continuesChapter } from './harnessChapters.ts';
-import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, toolActivityText } from './harnessCompaction.ts';
+import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from './harnessCompaction.ts';
 import { memoryPromptExcerpt, relatedMemory } from './harnessMemoryPrompt.ts';
 import {
   cleanTags, estimatedTokens, isoNow, newId, searchTerms, titleCaseTag,
@@ -116,9 +116,10 @@ export async function compactConversation(meta: ConversationMeta, active: Harnes
           onProgress?.(`Compacting conversation · part ${index + 1}/${windows.length}`);
           try {
             const part = await completeMetadata(config, [{ role: 'user', content:
-              `Summarize this portion of a coding/research conversation in at most ${perPart} characters. Preserve decisions, file paths, unresolved tasks, and user preferences. Do not invent facts. Return JSON only: {"summary":"..."}. Portion ${index + 1} of ${windows.length}, messages #${window.startSeq}–#${window.endSeq}:\n${window.text}` }], 'Summarize source material without changing files.', signal);
-            const parsed = parseJson<{ summary?: unknown }>(part.text);
-            partSummaries.push(typeof parsed.summary === 'string' && parsed.summary.trim() ? parsed.summary.trim().slice(0, perPart) : fallbackWindowSummary(window.text, perPart));
+              `Summarize this portion of a coding/research conversation in at most ${perPart} characters. Preserve decisions, file paths, unresolved tasks, and user preferences. A request, plan, or TODO is unfinished unless a later message explicitly confirms completion. Do not invent facts. Return JSON only: {"summary":"..."}. Portion ${index + 1} of ${windows.length}, messages #${window.startSeq}–#${window.endSeq}:\n${window.text}` }], 'Summarize source material without changing files.', signal);
+            const parsed = parseModelMetadataJson<{ summary?: unknown }>(part.text);
+            const candidate = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, perPart) : '';
+            partSummaries.push(candidate && !unsupportedCompletedActions(candidate, window.text).length ? candidate : fallbackWindowSummary(window.text, perPart));
           } catch (error) {
             if (signal?.aborted) throw error;
             partSummaries.push(`[Model summary unavailable for messages #${window.startSeq}–#${window.endSeq}] ${fallbackWindowSummary(window.text, Math.max(30, perPart - 75))}`.slice(0, perPart));
@@ -127,15 +128,34 @@ export async function compactConversation(meta: ConversationMeta, active: Harnes
       }
       onProgress?.('Compacting conversation · final summary');
       const source = windows.length === 1 ? windows[0].text : partSummaries.map((part, index) => `Part ${index + 1}: ${part}`).join('\n');
+      const outputLimit = Math.max(32, Math.min(config.maxOutputTokens, 480));
+      const summaryChars = Math.max(90, Math.min(240, Math.floor(outputLimit * .9)));
+      const carryChars = Math.max(110, Math.min(360, Math.floor(outputLimit * 1.2)));
       const answer = await completeMetadata(config, [{ role: 'user', content:
-        `Create a faithful compact record of this coding/research conversation. Return JSON only: {"summary":"max 450 characters about this part","carryForward":"max 700 characters of still relevant decisions, constraints, preferences, file paths and unresolved tasks from prior context plus this part","title":"short topic name","tags":["Title Cased Topic"],"newChapter":true}. Set newChapter to false only when this remains the same broad topic as the previous chapter. Omit superseded or resolved items from carryForward. Do not invent facts.\nPrevious chapter: ${prior?.title || 'none'}\nPrevious context: ${meta.contextSummary.slice(0, 1400)}\n${windows.length === 1 ? 'Conversation' : 'Ordered portion summaries'}:\n${source.slice(0, maxInput)}` }], 'You summarize prior conversation without changing any files.', signal, 480);
+        `Return only one short JSON object with these fields: {"summary":"...","carryForward":"...","title":"...","tags":["Topic"],"newChapter":true}. Every field must be a string except tags (array) and newChapter (boolean); never use nested objects. Summary describes only the NEW messages, at most ${summaryChars} characters. CarryForward combines still-relevant old and new decisions, user constraints, file paths, and unfinished tasks in at most ${carryChars} characters. Title is 2–5 words. Set newChapter false only if the broad topic is unchanged. A request or TODO stays unfinished without explicit completion. Do not invent work.\nPrevious chapter: ${prior?.title || 'none'}\nPrior context: ${contextHeadTail(meta.contextSummary, 450)}\n${windows.length === 1 ? 'New conversation' : 'New messages, in order'}:\n${source.slice(0, maxInput)}` }], 'Summarize source messages; do not change files.', signal, outputLimit);
       if (signal?.aborted) throw signal.reason || new DOMException('Stopped.', 'AbortError');
-      const parsed = parseJson<{ summary?: unknown; carryForward?: unknown; title?: unknown; tags?: unknown; newChapter?: unknown }>(answer.text);
-      if (typeof parsed.summary === 'string' && parsed.summary.trim()) summary = parsed.summary.trim().slice(0, 700);
-      if (typeof parsed.carryForward === 'string' && parsed.carryForward.trim()) carryForward = parsed.carryForward.trim().slice(0, 850);
-      if (typeof parsed.title === 'string' && parsed.title.trim()) title = parsed.title.trim().slice(0, 75);
-      tags = cleanTags(parsed.tags).length ? cleanTags(parsed.tags) : tags;
+      const parsed = parseModelMetadataJson<{ summary?: unknown; carryForward?: unknown; title?: unknown; tags?: unknown; newChapter?: unknown }>(answer.text);
+      if (typeof parsed.summary === 'string' && usefulCompactionSummary(parsed.summary)) summary = parsed.summary.trim().slice(0, 700);
+      if (typeof parsed.carryForward === 'string' && parsed.carryForward.trim() && !/^(?:none|n\/a|user constraints,? file paths,? (?:and )?unfinished tasks|(?:part\s*\d+[:\s]*){1,4})\.?$/i.test(parsed.carryForward.trim())) carryForward = parsed.carryForward.trim().slice(0, 850);
+      if (typeof parsed.title === 'string' && parsed.title.trim() && !/^(?:part\s*\d+|conversation summary|new|maintenance|conversation)(?:\b|:)/i.test(parsed.title.trim())) title = parsed.title.trim().slice(0, 75);
+      const modelTags = cleanTags(parsed.tags).filter(tag => !/^(?:topic|summary|part\s*\d+|assistant|user)$/i.test(tag));
+      tags = modelTags.length ? modelTags : tags;
       if (typeof parsed.newChapter === 'boolean') modelChapterDecision = parsed.newChapter;
+      if (!summary) { title = fallbackTitle(active); tags = fallbackTags(transcript); modelChapterDecision = null; }
+      if (unsupportedCompletedActions(summary, transcript).length || unsupportedCompletedActions(carryForward, `${meta.contextSummary}\n${transcript}`).length) {
+        summary = fallbackCompactionSummary(active);
+        carryForward = '';
+        title = fallbackTitle(active);
+        tags = fallbackTags(transcript);
+        modelChapterDecision = null;
+        onProgress?.('Model summary had an unsupported completed-work claim; using source excerpts.');
+      } else if (repeatsPreviousSummary(summary, prior?.summary)) {
+        summary = fallbackCompactionSummary(active);
+        title = fallbackTitle(active);
+        tags = fallbackTags(transcript);
+        modelChapterDecision = null;
+        onProgress?.('Model repeated the previous part; using new source excerpts.');
+      }
     } catch { if (signal?.aborted) throw signal.reason || new DOMException('Stopped.', 'AbortError'); /* The full messages remain intact, so deterministic metadata is safe. */ }
   }
   if (!summary) {
@@ -154,7 +174,7 @@ export async function compactConversation(meta: ConversationMeta, active: Harnes
   };
   return {
     ...meta, activeFrom: meta.messageCount,
-    contextSummary: carryForwardContext(meta.contextSummary, summary, carryForward),
+    contextSummary: carryForwardContext(meta.contextSummary, summary, carryForward, userConstraintAnchors(active)),
     segments: [...meta.segments, segment],
     tags: cleanTags([...meta.tags, ...tags], 40),
     updatedAt: isoNow(),

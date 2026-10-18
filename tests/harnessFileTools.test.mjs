@@ -58,8 +58,12 @@ test('read-only shell uses the active project file scope', async () => {
   assert.equal(await tools.execute('shell_readonly', { command: 'pwd' }), '/workspace');
   assert.match(await tools.execute('shell_readonly', { command: 'ls -la /workspace/src' }), /src\/readme.md/);
   assert.match(await tools.execute('shell_readonly', { command: 'cat /workspace/src/readme.md' }), /hello from project/);
+  assert.match(await tools.execute('shell_readonly', { command: 'rg "hello from" /workspace/src' }), /src\/readme\.md:1:1/);
   await assert.rejects(tools.execute('shell_readonly', { command: 'cat /workspace/../harness/private.txt' }), /paths must stay/);
   await assert.rejects(tools.execute('shell_readonly', { command: 'cat /harness/private.txt' }), /paths must stay/);
+  const restricted = browserFileTools(folder, { ...scope, projects: [{ ...scope.projects[0], toolPermissions: { shell_cat: 'deny' } }] });
+  assert.match(await restricted.execute('shell_readonly', { command: 'ls /workspace/src' }), /readme\.md/);
+  await assert.rejects(restricted.execute('shell_readonly', { command: 'cat /workspace/src/readme.md' }), /shell_cat is blocked/);
 });
 
 test('a read-only project hides model writes and rejects direct or cross-scope write calls', async () => {
@@ -72,6 +76,15 @@ test('a read-only project hides model writes and rejects direct or cross-scope w
   await assert.rejects(tools.execute('write_file', { path: 'src/new.ts', content: 'bad' }), /read-only/);
   await assert.rejects(tools.execute('write_file', { project: 'fake', area: 'workspace', path: 'repositories/demo/src/new.ts', content: 'bad' }), /read-only/);
   await assert.rejects(readBlob(folder, 'repositories/demo/src/new.ts'), missing);
+});
+
+test('workspace read-only mode rejects direct model writes even with full workspace access', async () => {
+  const folder = new MemoryDirectory();
+  const locked = browserFileTools(folder, { ...scope, workspaceAccess: true, workspaceReadOnly: true });
+  await assert.rejects(locked.execute('write_file', { area: 'workspace', path: 'repositories/demo/new.ts', content: 'bad' }), /blocked/);
+  await assert.rejects(locked.execute('git_init', {}), /blocked/);
+  assert.equal(await locked.execute('shell_readonly', { command: 'pwd' }), '/workspace');
+  await assert.rejects(readBlob(folder, 'repositories/demo/new.ts'), missing);
 });
 
 test('workspace-wide tools cannot bypass a different assigned read-only project', async () => {

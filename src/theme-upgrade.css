@@ -149,6 +149,7 @@
 }
 .harness-memory-proposal:hover { border-color: #a0ffed; background: #28595b; }
 .harness-dialog.harness-response-dialog { width: min(880px, calc(100vw - 28px)); max-height: min(88dvh, 900px); overflow: auto; }
+.harness-dialog > .harness-response-report { display: block; width: 100%; min-width: 0; margin: 0; }
 .harness-response-report-head, .harness-response-report-head > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .harness-response-report-head { margin-bottom: 14px; }
 .harness-response-report-head h2 { margin: 2px 0; }
@@ -241,4 +242,108 @@ dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diag
   .harness-atmosphere-horizon,
   .harness-atmosphere-glyphs,
   .harness-nav button.active svg { animation: none !important; }
+}
+
+/* The task board and journal use the same dark signal language as chat. */
+.harness[data-view="tasks"] { --view-accent: #ffca91; --view-accent-soft: #ffca9124; }
+.harness[data-view="journal"] { --view-accent: #c4a7ff; --view-accent-soft: #c4a7ff29; }
+
+.harness-task-form,
+.harness-task-card,
+.harness-journal-article,
+.harness-journal-empty {
+  border-color: #52778a;
+  background:
+    radial-gradient(circle at 100% 0, var(--view-accent-soft), transparent 42%),
+    linear-gradient(150deg, #192c43, #0e1b2d 72%);
+}
+.harness-task-form::before,
+.harness-task-card::before,
+.harness-journal-article::before,
+.harness-journal-empty::before { border-color: var(--view-accent); box-shadow: 0 0 12px var(--view-accent-soft); }
+.harness-task-card { transition: border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
+.harness-task-card:hover,
+.harness-task-card:focus-within {
+  transform: translateY(-2px);
+  border-color: #e9bc8a;
+  box-shadow: inset 0 1px #fff2df1e, 0 16px 38px #0008, 0 0 22px #ffc98a13;
+}
+.harness-task-card-head small { color: #ffcf9b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.harness-task-card-head select,
+.harness-task-form :is(input, textarea, select),
+.harness-task-note input { background: #0d1b2d; border-color: #4b6b81; }
+.harness-task-card-head select:hover,
+.harness-task-form :is(input, textarea, select):hover,
+.harness-task-note input:hover { border-color: #829ab0; }
+.harness-task-card-head select:focus-visible,
+.harness-task-form :is(input, textarea, select):focus-visible,
+.harness-task-note input:focus-visible { border-color: #ffca91; }
+.harness-task-list-head strong { color: #ffe3c2; }
+.harness-task-empty > svg { color: #ffca91; filter: drop-shadow(0 0 14px #ffca9166); }
+
+.harness-journal-explain {
+  border-color: #6d668b;
+  background: linear-gradient(100deg, #292442, #142338 72%);
+  box-shadow: inset 3px 0 #c4a7ff, 0 10px 28px #0005;
+}
+.harness-journal-explain > svg { color: #c4a7ff; filter: drop-shadow(0 0 8px #c4a7ff77); }
+.harness-journal-dates { position: relative; padding-left: 15px; }
+.harness-journal-dates::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 5px;
+  width: 1px;
+  background: linear-gradient(#c4a7ff, #577c91 70%, transparent);
+  box-shadow: 0 0 12px #c4a7ff66;
+}
+.harness-journal-dates > button { position: relative; transition: background .2s ease, color .2s ease, transform .2s ease; }
+.harness-journal-dates > button::before {
+  content: '';
+  position: absolute;
+  top: calc(50% - 3px);
+  left: -13px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #a7a5c5;
+  border-radius: 50%;
+  background: #152439;
+}
+.harness-journal-dates > button.active::before {
+  background: #c4a7ff;
+  border-color: #e0d0ff;
+  box-shadow: 0 0 12px #c4a7ff;
+}
+.harness-journal-dates > button:hover { transform: translateX(3px); }
+.harness-journal-dates > button.active { box-shadow: inset 3px 0 #c4a7ff, 0 0 18px #c4a7ff19; }
+.harness-journal-article > header { position: relative; }
+.harness-journal-article > header::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  width: 35%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c4a7ff);
+  box-shadow: 0 0 12px #c4a7ff;
+}
+.harness-journal-topic > span { color: #d3bdff; }
+.harness-journal-topic h3 { color: #f6f0ff; }
+.harness-journal-links button { color: #d3bdff; transition: color .18s ease, transform .18s ease; }
+.harness-journal-links button:hover { color: #f3e9ff; transform: translateX(2px); }
+.harness-journal-empty > svg { color: #c4a7ff; filter: drop-shadow(0 0 14px #c4a7ff66); }
+
+@media (max-width: 760px) {
+  .harness-journal-dates { padding: 0 0 10px; }
+  .harness-journal-dates::before,
+  .harness-journal-dates > button::before { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .harness-task-card,
+  .harness-journal-dates > button,
+  .harness-journal-links button { transition: none; }
+  .harness-task-card:hover,
+  .harness-journal-dates > button:hover,
+  .harness-journal-links button:hover { transform: none; }
 }

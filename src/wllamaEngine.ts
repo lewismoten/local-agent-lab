@@ -50,12 +50,14 @@ export const wllamaEngineManager = {
       publish({ installed, bytes, status: installed ? 'idle' : queued ? 'paused' : 'idle', currentAsset: '', error: '', revision: state.revision + 1 });
     } catch (error) { if (id === discoveryId) publish({ status: 'error', installed: false, bytes: 0, error: error instanceof Error ? error.message : String(error), revision: state.revision + 1 }); }
   },
-  async queue(folder: FileSystemDirectoryHandle) {
+  async queue(folder: FileSystemDirectoryHandle, waitForCompletion = true) {
     if (state.installed || active) return;
     const dir = await engineDirectory(folder, 'Wllama', true);
     await saveQueue(dir, true);
     publish({ status: 'queued', error: '' });
-    await this.resume(folder);
+    const completion = this.resume(folder);
+    if (waitForCompletion) await completion;
+    else void completion.catch(error => showToast(`Wllama download failed: ${error instanceof Error ? error.message : String(error)}`, 'error'));
   },
   async resume(folder: FileSystemDirectoryHandle) {
     if (active || state.installed) return;

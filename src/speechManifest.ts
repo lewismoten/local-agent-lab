@@ -129,6 +129,9 @@ export const SPEECH_ENGINE_ASSETS: readonly SpeechAsset[] = [
 ];
 export const KOKORO_ENGINE_ASSETS: readonly SpeechAsset[] = [
   kokoroLicense,
+  { name: 'LICENSE-Transformers-Apache-2.0.txt', url: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1/LICENSE', bytes: 11358, sha256: 'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30' },
+  { name: 'LICENSE-Phonemizer-Apache-2.0.txt', url: 'https://cdn.jsdelivr.net/npm/phonemizer@1.2.1/LICENSE', bytes: 11357, sha256: 'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4' },
+  { name: 'LICENSE-ONNX-Runtime-MIT.txt', url: 'https://raw.githubusercontent.com/microsoft/onnxruntime/v1.22.0/LICENSE', bytes: 1073, sha256: '2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c' },
   { name: 'kokoro.web.js', url: 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js', bytes: 2135146, sha256: '6067712fe4c43cdb36c762f860a5ab8d96ea1d9c8882466438eb9f3d0d20be8f' },
   { name: 'ort-wasm-simd-threaded.jsep.mjs', url: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0-dev.20250409-89f8206ba4/dist/ort-wasm-simd-threaded.jsep.mjs', bytes: 44484, sha256: '08fb86ec433c78bfb032c5d84a68b8e8e5a8d81268fa39e24314179a5767a5b9' },
   { name: 'ort-wasm-simd-threaded.jsep.wasm', url: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0-dev.20250409-89f8206ba4/dist/ort-wasm-simd-threaded.jsep.wasm', bytes: 21596019, sha256: 'c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39' },

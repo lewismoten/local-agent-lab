@@ -21,6 +21,7 @@ Use **Eject workspace** before removing a USB drive. It stops new work, waits fo
 
 - [Getting started, builds, and validation](docs/getting-started.md)
 - [Workspace features and file layout](docs/workspace.md)
+- [Large conversation checks](docs/history-performance.md)
 - [Privacy, offline use, and GitHub Pages](docs/privacy-and-hosting.md)
 - [Model license handling](docs/model-licenses.md)
 - [Image generation](docs/image-generation.md), [graphics and pose](docs/graphics-and-pose.md), and [video and motion](docs/video-motion.md)

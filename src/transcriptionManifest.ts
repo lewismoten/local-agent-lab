@@ -26,6 +26,7 @@ export const TRANSCRIPTION_MODEL_ASSETS: readonly TranscriptionAsset[] = [
 ];
 export const TRANSCRIPTION_ENGINE_ASSETS: readonly TranscriptionAsset[] = [
   license,
+  { name: 'LICENSE-ONNX-Runtime-MIT.txt', url: 'https://raw.githubusercontent.com/microsoft/onnxruntime/v1.22.0/LICENSE', bytes: 1073, sha256: '2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c' },
   { name: 'transformers.min.js', url: engineBase + 'transformers.min.js', bytes: 888173, sha256: 'aa5002b70e789798da263f5f99c62bd3e8fcd0c119258a493c40c180648365fa' },
   { name: 'ort-wasm-simd-threaded.jsep.mjs', url: engineBase + 'ort-wasm-simd-threaded.jsep.mjs', bytes: 44484, sha256: '08fb86ec433c78bfb032c5d84a68b8e8e5a8d81268fa39e24314179a5767a5b9' },
   { name: 'ort-wasm-simd-threaded.jsep.wasm', url: engineBase + 'ort-wasm-simd-threaded.jsep.wasm', bytes: 21596019, sha256: 'c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39' },

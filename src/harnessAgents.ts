@@ -94,7 +94,10 @@ export async function executeHarnessAgent(args: {
   if (!config) throw new Error(preflightError ? `${base.label} could not load: ${preflightError}` : `Load and test ${base.label} or a coding fallback before this agent can run.`);
   const { allowed, project } = agentRunProject(agent, manifest, args.preferredProjectId);
   const event = nextAgentEvent(agent);
-  const task = [agent.prompt.trim(), event && `Event in ${project.name}: ${event.description}`].filter(Boolean).join('\n\n');
+  const assignedTasks = (await store.tasks()).filter(item => (item.status === 'open' || item.status === 'in-progress') && item.assignee?.kind === 'agent' && item.assignee.agentId === agent.id
+    && (item.scope === 'workspace' ? agent.workspaceAccess : item.projectId === project.id)).slice(0, 3);
+  const task = [agent.prompt.trim(), event && `Event in ${project.name}: ${event.description}`,
+    assignedTasks.length && `Assigned tasks: ${assignedTasks.map(item => `${item.id} ${item.title}`).join('; ').slice(0, 350)}. Use read_task, then leave a note or update status as you work.`].filter(Boolean).join('\n\n');
   let libraryContext = '';
   if (folder) {
     try {
@@ -119,7 +122,9 @@ export async function executeHarnessAgent(args: {
       session = updated.find(item => item.id === session.id) || session;
     };
     const append = async (message: Omit<HarnessMessage, 'seq'>) => {
-      session = (await store.appendConversationMessage(session, message)).meta;
+      const saved = await store.appendConversationMessage(session, message);
+      session = saved.meta;
+      if (saved.journalWarning) console.warn(saved.journalWarning);
     };
     const identity = identityInstructions(manifest, agent.identityId, agent.identity);
     const guidedProject = await projectWithGuide(folder, project);
@@ -130,7 +135,7 @@ export async function executeHarnessAgent(args: {
     }
     let system = promptForConversation(guidedProject, session, memories, task, identity, libraryContext, true, historyContext, systemPromptCharBudget(config));
     const active = await store.messages(session, session.activeFrom);
-    const scope = { projects: allowed, workspaceAccess: agent.workspaceAccess, defaultProjectId: project.id, workspaceProjects: manifest.projects, toolProfiles: manifest.toolProfiles || [] };
+    const scope = { projects: allowed, workspaceAccess: agent.workspaceAccess, workspaceReadOnly: manifest.workspaceToolAccess === 'read-only', defaultProjectId: project.id, workspaceProjects: manifest.projects, toolProfiles: manifest.toolProfiles || [], agentId: agent.id };
     const imagePriority = imageCandidates(args.imageConfig, manifest.modelPreferences.image);
     const toolReserve = harnessToolReserve({ folder, scope, history: { store, meta: session }, imageConfig: args.imageConfig, imagePriority, signal }, config, task);
     if (needsCompaction(session, active, task, config, system, toolReserve, args.compactionAt)) {

@@ -36,7 +36,7 @@ export function selectHarnessToolDefinitions(definitions: ChatCompletionTool[], 
   const budget = Math.max(280, Math.min(6000, Math.floor(contextWindow * .2), Math.floor(availableInput * .35)));
   const compact = budget < 600;
   const text = request.toLowerCase();
-  const file = /\b(files?|folders?|code|coding|repository|repo|projects?|source|bugs?|build|tests?|implement|fix|refactor|edit|write|create|change|update|inspect|review|open|read|shell|terminal|command|ls|cat|pwd)\b/.test(text);
+  const file = /\b(files?|folders?|code|coding|repository|repo|projects?|source|bugs?|build|tests?|implement|fix|refactor|edit|write|create|change|update|inspect|review|open|read|search|shell|terminal|command|ls|cat|pwd|rg)\b/.test(text);
   const edit = /\b(edit|write|create|build|change|update|implement|fix|refactor|modify|patch|add)\b/.test(text);
   const remove = /\b(delete|remove|erase)\b/.test(text);
   const move = /\b(move|rename|relocate)\b/.test(text);
@@ -46,12 +46,20 @@ export function selectHarnessToolDefinitions(definitions: ChatCompletionTool[], 
   const memory = /\b(memory|memories|remember|preferences?|decid(?:e|ed|ing)|decisions?|agree(?:d|ment)?|saved? notes?)\b/.test(text);
   const recovery = /\b(restore|undo|backup|backups|recover|recovery|revert)\b/.test(text);
   const image = /\b(images?|pictures?|photos?|illustrat\w*|draw\w*|artwork|visual|render|diagram|logo|icon|sprite|poster|portrait|painting|graphic)\b/.test(text);
+  const tasks = /\b(tasks?|issues?|checklists?|work items?|assign(?:ed|ment)?|progress|blocked|priorit(?:y|ies|ize))\b/.test(text);
+  const agents = /\b(agents?|assistants?|autonomous|schedule|scheduled|persona|personalit(?:y|ies))\b/.test(text);
+  const projectSetup = /\bprojects?\b/.test(text) && /\b(create|make|new|set up|configure|design|propose|draft|add|start)\b/.test(text);
+  const models = /\b(models?|gguf|weights?|quantiz\w*|wllama|prismml|engines?)\b/.test(text)
+    || /\b(fallbacks?|model priority|model preferences|ai profiles?|chat profiles?|project profiles?)\b/.test(text)
+    || /\bdownload(?:s|ing)?\b/.test(text) && /\b(speed|throttl\w*|bandwidth|queue|progress|status|paused)\b/.test(text);
+  const journal = /\b(journals?|daily log|work log|what (?:i|we|you) did (?:today|yesterday)|yesterday.s work)\b/.test(text);
+  const topics = /\b(tags?|tag cloud|topics?|related conversations?|conversations? about)\b/.test(text);
   const syntax = /\b(syntax|parsing?|compile|lint|validate|verify)\b/.test(text) || /\bcheck\b/.test(text) && /\.(?:jsx?|tsx?|mjs|cjs|json)\b/.test(text);
   const scores: Record<string, number> = {};
   const score = (name: string, value: number) => { scores[name] = Math.max(scores[name] || 0, value); };
   if (file || edit || remove || move || git) {
     score('read_file', 10); score('search_files', 9); score('list_files', 8);
-    score('shell_readonly', /\b(shell|terminal|command|ls|cat|pwd)\b/.test(text) ? 12 : 7);
+    score('shell_readonly', /\b(shell|terminal|command|ls|cat|pwd|rg)\b/.test(text) ? 12 : 7);
   }
   if (edit) { score('replace_in_file', 9); score('write_file', 7); score('apply_patch', /\b(patch|diff|multiple|several|refactor)\b/.test(text) ? 10 : 6); }
   if (compact && edit && /\b[\w.-]+(?:\/[\w.-]+)*\.(?:ts|tsx|js|jsx|py|json|css|html|md)\b/.test(text)) {
@@ -74,6 +82,39 @@ export function selectHarnessToolDefinitions(definitions: ChatCompletionTool[], 
   if (memory) { score('search_memory', 14); score('read_memory', 11); if (/\b(remember|save|store|keep|note)\b/.test(text)) score('propose_memory', 16); }
   if (recovery) { score('list_backups', 18); score('inspect_backup', 17); score('file_info', 16); score('restore_backup', 15); }
   if (image) score('generate_image', 14);
+  if (tasks) { score('list_tasks', 15); score('read_task', 14); score('claim_task', 12); score('add_task_note', 10); score('set_task_status', 9); }
+  if (agents) { score('list_agents', 15); if (/\b(create|make|new|set up|configure|design|propose|draft|add)\b/.test(text)) score('propose_agent', 17); }
+  if (projectSetup) score('propose_project', 22);
+  if (/\b(project|workspace)\b/.test(text) && /\b(instructions?|guidance|personality|behavior|behaviour)\b/.test(text)) {
+    score('get_project_instructions', 23);
+    if (/\b(change|edit|update|write|set|replace|revise|configure|suggest|propose)\b/.test(text)) score('propose_project_instructions', 25);
+  }
+  if (models) {
+    const statusIntent = /\b(progress|status|queued|downloading|paused|remaining|percent)\b/.test(text);
+    const speedIntent = /\b(speed|throttl\w*|bandwidth|slow(?:er)?|fast(?:er)?)\b/.test(text);
+    const preferenceIntent = /\b(fallbacks?|priorit(?:y|ies|ize)|preferences?|reorder|order)\b/.test(text);
+    score('search_model_catalog', 20);
+    if (preferenceIntent) {
+      score('get_model_preferences', 24);
+      if (/\b(set|change|update|move|reorder|prioritize|configure|make)\b/.test(text)) score('set_model_preferences', 26);
+    }
+    if (/\b(chat|conversation|project)\b/.test(text) && /\b(profile|provider|model)\b/.test(text)) {
+      score('get_project_chat_profile', 24);
+      if (/\b(use|choose|select|switch|change|set|configure|suggest|recommend)\b/.test(text)) score('propose_project_chat_profile', 26);
+    }
+    if (statusIntent) score('get_model_download_status', 25);
+    if (/\b(download|install|queue|fetch|get)\b/.test(text)) {
+      score('queue_model_download', statusIntent || speedIntent || /\bengines?\b/.test(text) && !/\bgguf|weights?|models?\b/.test(text) ? 3 : 19);
+      if (/\b(wllama|prismml|engines?)\b/.test(text)) score('queue_browser_engine', 22);
+    }
+    if (speedIntent) score('set_model_download_speed', 25);
+  }
+  if (journal) {
+    score('list_journal_days', 15); score('read_journal_day', 14);
+    if (/\b(?:on|off|enabled?|disabled?|record(?:ing)?|paused?|settings?)\b/.test(text)) score('get_journal_settings', 20);
+    if (/\b(?:turn|enable|disable|start|stop|pause|resume|change|set)\b/.test(text)) score('set_journal_enabled', 23);
+  }
+  if (topics) { score('list_project_tags', 15); score('find_tagged_conversations', 14); }
   const required = new Set(requiredNames);
   const ranked = definitions.map((original, index) => ({ definition: compact ? compactToolDefinition(original) : original, index, score: scores[original.function.name] || 0 }))
     .filter(item => item.score > 0 || required.has(item.definition.function.name))

@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, toolActivityText } from '../src/harnessCompaction.ts';
+import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from '../src/harnessCompaction.ts';
+
+test('model compaction does not turn pending work into completed work', () => {
+  const source = 'USER: Please add Unicode escape tests. ASSISTANT: We fixed escaped quote handling; Unicode escape tests remain a TODO.';
+  assert.deepEqual(unsupportedCompletedActions('Fixed escaped quote handling.', source), []);
+  assert.match(unsupportedCompletedActions('Fixed escaped quote handling and added Unicode escape tests.', source).join(' '), /added Unicode escape tests/);
+  assert.match(unsupportedCompletedActions('Worked on the parser, adding Unicode escape tests.', source).join(' '), /added Unicode escape tests/);
+  assert.match(unsupportedCompletedActions('Added Unicode escape tests.', 'ASSISTANT: Added parser fixture tests; Unicode tests remain a TODO.').join(' '), /Added Unicode escape tests/i);
+  assert.match(unsupportedCompletedActions('Added tests.', 'ASSISTANT: Tests were not added.').join(' '), /Added tests/i);
+  assert.match(unsupportedCompletedActions('Assistant updates the parser file.', 'USER: Please update the parser file. ASSISTANT: It is still pending.').join(' '), /updated the parser file/i);
+  assert.match(unsupportedCompletedActions('User inspects src/parser.ts.', 'USER: Inspect src/parser.ts before editing.').join(' '), /inspected src\/parser.ts/i);
+});
+
+test('a new segment rejects a repeated old summary without rejecting a changed topic', () => {
+  assert.equal(repeatsPreviousSummary('Project Meridian creation with private documents on removable drive, no service uploads', 'Project Meridian creation with private documents on removable drive, no service uploads.'), true);
+  assert.equal(repeatsPreviousSummary('The parser now handles escaped quotes but Unicode tests remain pending.', 'Project Meridian creation with private documents on removable drive, no service uploads.'), false);
+  assert.equal(repeatsPreviousSummary('USB privacy', 'USB privacy'), false);
+});
+
+test('metadata parsing accepts a fenced JSON object but rejects empty summaries', () => {
+  assert.deepEqual(parseModelMetadataJson('Here is the result:\n```json\n{"summary":"Private files stay on USB."}\n```'), { summary: 'Private files stay on USB.' });
+  assert.equal(usefulCompactionSummary('NEW'), false);
+  assert.equal(usefulCompactionSummary('The agent waits while chat is using the model lease.'), true);
+  assert.throws(() => parseModelMetadataJson('No JSON was returned.'), /No JSON object/);
+});
 
 const record = (seq, role, content) => ({ id: String(seq), seq, role, content, createdAt: '2026-01-01T00:00:00.000Z' });
 
@@ -108,4 +132,20 @@ test('a model carry replaces superseded notes and a narrow excerpt keeps both en
   assert.match(context, /Latest part: Switched/);
   assert.ok(contextHeadTail(`Durable: keep the USB drive portable. ${'x'.repeat(900)} Latest: update src/cache.ts.`, 150).includes('USB drive portable'));
   assert.ok(contextHeadTail(`Durable: keep the USB drive portable. ${'x'.repeat(900)} Latest: update src/cache.ts.`, 150).includes('src/cache.ts'));
+});
+
+test('explicit user constraints survive a weak model carry across parts', () => {
+  const original = userConstraintAnchors([
+    record(0, 'user', 'Private documents must stay on the removable drive; never upload them to a service.'),
+    record(1, 'assistant', 'I will keep them local.'),
+    record(2, 'user', 'Can we add a parser test later?'),
+  ]);
+  assert.match(original, /never upload/);
+  let context = carryForwardContext('', 'Discussed project setup.', 'None', original);
+  context = carryForwardContext(context, 'Discussed agent scheduling.', 'Agent scheduling remains open.', userConstraintAnchors([record(3, 'user', 'Keep agents paused while chat is active.') ]));
+  assert.match(context, /never upload/);
+  assert.match(context, /Keep agents paused/);
+  assert.match(context, /agent scheduling/i);
+  assert.ok(context.length <= 1600);
+  assert.doesNotMatch(context, /Earlier notes \(verify if superseded\): None/);
 });

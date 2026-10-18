@@ -5,6 +5,79 @@ export type CompactionWindow = { startSeq: number; endSeq: number; text: string 
 
 const IMPORTANT_CUE = /\b(?:agreed|blocked|changed|chose|created|decided|error|failed|fixed|implement(?:ed)?|keep|must|need|next|prefer|remember|switch(?:ed)?|todo|use)\b/gi;
 const FILE_PATH = /(?:^|[\s"'`])(?:[\w.-]+\/)+[\w.-]+/g;
+const COMPLETED_ACTION = /\b(?:added|adding|adds|built|building|builds|completed|completing|completes|created|creating|creates|deployed|deploying|deploys|fixed|fixing|fixes|implemented|implementing|implements|inspected|inspecting|inspects|merged|merging|merges|published|publishing|publishes|ran|runs|removed|removing|removes|renamed|renaming|renames|resolved|resolving|resolves|saved|saving|saves|tested|testing|updated|updating|updates|verified|verifying|verifies|wrote|writing|writes)\b/gi;
+const COMPLETED_FORM: Record<string, string> = {
+  adding: 'added', adds: 'added', building: 'built', builds: 'built', completing: 'completed', completes: 'completed', creating: 'created', creates: 'created', deploying: 'deployed', deploys: 'deployed', fixing: 'fixed', fixes: 'fixed', implementing: 'implemented', implements: 'implemented',
+  inspecting: 'inspected', inspects: 'inspected', merging: 'merged', merges: 'merged', publishing: 'published', publishes: 'published', runs: 'ran', removing: 'removed', removes: 'removed', renaming: 'renamed', renames: 'renamed', resolving: 'resolved', resolves: 'resolved', saving: 'saved', saves: 'saved', testing: 'tested', updating: 'updated', updates: 'updated', verifying: 'verified', verifies: 'verified', writing: 'wrote', writes: 'wrote',
+};
+const CLAIM_STOP = new Set('about after along also and are been before for from into its more that the their then there these this those through under using with'.split(' '));
+
+/** Reject a model's completed-work claim unless an affirmative source clause supports the action and subject. */
+export function unsupportedCompletedActions(modelText: string, sourceText: string): string[] {
+  const clauses = sourceText.split(/(?:[.!?;]\s+|\n+)/).filter(Boolean);
+  const terms = (text: string) => [...text.toLowerCase().matchAll(/\b[a-z][a-z0-9_-]{2,}\b/g)]
+    .map(match => match[0]).filter(word => !CLAIM_STOP.has(word));
+  const unsupported: string[] = [];
+  for (const clause of modelText.split(/(?:[.!?;]\s+|\n+)/).filter(Boolean)) {
+    const matches = [...clause.matchAll(COMPLETED_ACTION)];
+    for (const [index, match] of matches.entries()) {
+      const verb = COMPLETED_FORM[match[0].toLowerCase()] || match[0].toLowerCase();
+      const tail = clause.slice(match.index! + match[0].length, matches[index + 1]?.index ?? clause.length).split(/\b(?:but|however|though|while)\b/i)[0];
+      const subject = terms(tail).slice(0, 7);
+      const supported = clauses.some(source => {
+        const action = [...source.matchAll(COMPLETED_ACTION)].find(item => item[0].toLowerCase() === verb);
+        if (!action) return false;
+        const before = source.slice(Math.max(0, action.index! - 28), action.index!);
+        if (/\b(?:not|never|didn't|wasn't|failed to)\b/i.test(before)) return false;
+        const evidence = new Set(terms(source.slice(action.index! + action[0].length).split(/\b(?:but|however|though|while)\b/i)[0]).slice(0, 14));
+        return !subject.length || subject.filter(word => evidence.has(word)).length >= Math.min(2, subject.length);
+      });
+      if (!supported) unsupported.push(`${verb}${tail}`.trim().slice(0, 120));
+    }
+  }
+  return unsupported;
+}
+
+/** A new segment needs a fresh description even if the model repeats older context. */
+export function repeatsPreviousSummary(current: string, previous = ''): boolean {
+  const normalized = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+  const now = normalized(current);
+  const before = normalized(previous);
+  return now.length >= 35 && before.length >= 35 && (now === before || now.length >= 50 && before.includes(now) || before.length >= 50 && now.includes(before));
+}
+
+/** Small models often wrap a valid JSON object in prose or a code fence. */
+export function parseModelMetadataJson<T>(text: string): T {
+  const source = text.trim();
+  try { return JSON.parse(source.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) as T; }
+  catch {
+    const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(source)?.[1];
+    const first = source.indexOf('{');
+    const last = source.lastIndexOf('}');
+    const object = fenced || (first >= 0 && last > first ? source.slice(first, last + 1) : '');
+    if (!object.trim().startsWith('{')) throw new SyntaxError('No JSON object in model metadata.');
+    return JSON.parse(object.trim()) as T;
+  }
+}
+
+export function usefulCompactionSummary(text: string): boolean {
+  return text.trim().length >= 40 && !/^(?:new|none|n\/a|conversation summary|summary|part\s*\d+)\.?$/i.test(text.trim());
+}
+
+/** Carry a few explicit user constraints independently of a small model's summary. */
+export function userConstraintAnchors(messages: HarnessMessage[], limit = 260): string {
+  const candidates = messages.filter(message => message.role === 'user').flatMap(message =>
+    message.content.replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).filter(sentence =>
+      /\b(?:must|never|always|do not|don't|keep|prefer|preserve|only|remain|stay|without)\b/i.test(sentence)));
+  const selected: string[] = [];
+  for (const sentence of candidates) {
+    const value = sentence.trim().slice(0, 170);
+    if (!value || selected.some(item => item.toLowerCase() === value.toLowerCase())) continue;
+    if (selected.join(' | ').length + value.length + (selected.length ? 3 : 0) > limit) continue;
+    selected.push(value);
+  }
+  return selected.join(' | ');
+}
 
 /** Index saved changes, but leave verbose read-only tool output out of search. */
 export function searchableMessageText(message: Pick<HarnessMessage, 'content' | 'toolEvents'>): string {
@@ -47,14 +120,31 @@ export function fallbackWindowSummary(text: string, limit: number): string {
 }
 
 /** Keep a durable front and a recent tail when a small model cannot merge context. */
-export function carryForwardContext(previous: string, latest: string, modelCarry = ''): string {
+export function carryForwardContext(previous: string, latest: string, modelCarry = '', userConstraints = ''): string {
   const current = latest.trim().slice(0, 650);
-  if (!previous.trim() && !modelCarry.trim()) return current;
-  const priorNotes = previous.replace(/^Earlier notes \(verify if superseded\):\s*/, '').replace(/\nLatest part:\s*/g, ' | ').trim();
-  const carry = modelCarry.trim()
-    ? modelCarry.trim().slice(0, 850)
-    : priorNotes.length <= 750 ? priorNotes : `${priorNotes.slice(0, 420).trimEnd()} … ${priorNotes.slice(-280).trimStart()}`;
-  return [`Earlier notes (verify if superseded): ${carry}`, `Latest part: ${current}`].filter(Boolean).join('\n').slice(0, 1600);
+  const oldAnchor = /^User constraints \(verify if current\): ([^\n]*)/.exec(previous)?.[1] || '';
+  const anchorParts: string[] = [];
+  for (const [source, allowance] of [[oldAnchor, 250], [userConstraints, 160]] as const) {
+    let used = 0;
+    for (const piece of source.split(' | ')) {
+      const value = piece.trim();
+      if (!value || anchorParts.some(other => other.toLowerCase().includes(value.toLowerCase()))) continue;
+      const next = value.length + (used ? 3 : 0);
+      if (used + next > allowance || anchorParts.join(' | ').length + value.length + (anchorParts.length ? 3 : 0) > 415) continue;
+      anchorParts.push(value); used += next;
+    }
+  }
+  const anchor = anchorParts.join(' | ');
+  const anchorLine = anchor ? `User constraints (verify if current): ${anchor}` : '';
+  const oldNotes = previous.replace(/^User constraints \(verify if current\): [^\n]*\n?/, '');
+  const cleanCarry = /^(?:none|n\/a|nothing|no prior context)\.?$/i.test(modelCarry.trim()) ? '' : modelCarry.trim();
+  if (!oldNotes.trim() && !cleanCarry) return [anchorLine, current].filter(Boolean).join('\n').slice(0, 1600);
+  const priorNotes = oldNotes.replace(/^Earlier notes \(verify if superseded\):\s*/, '').replace(/\nLatest part:\s*/g, ' | ').trim();
+  const carry = cleanCarry
+    ? cleanCarry.slice(0, 650)
+    : priorNotes.length <= 650 ? priorNotes : `${priorNotes.slice(0, 350).trimEnd()} … ${priorNotes.slice(-240).trimStart()}`;
+  const available = Math.max(0, 1600 - anchorLine.length - current.length - 58);
+  return [anchorLine, carry && `Earlier notes (verify if superseded): ${carry.slice(0, available)}`, `Latest part: ${current}`].filter(Boolean).join('\n');
 }
 
 /** A narrow prompt should retain both durable decisions and the newest update. */

@@ -160,6 +160,8 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
   };
   const manager = {
     getSnapshot: () => state,
+    /** A live queue belongs only to the folder that started or resumed it. */
+    getWorkspaceSnapshot: (folder: FileSystemDirectoryHandle) => queueFolder === folder || activeFolder === folder ? state : null,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setSpeedLimit(value: number) {
       const speedLimit = Number.isFinite(value) && value >= 0 ? value : 0;

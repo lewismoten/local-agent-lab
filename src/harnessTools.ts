@@ -1,6 +1,6 @@
 import type { BrowserTools } from './browserModel.ts';
 import { readBlob, writeBlob } from './storage.ts';
-import { parseReadOnlyShell } from './harnessShell.ts';
+import { parseReadOnlyShell, shellCommandPermission } from './harnessShell.ts';
 import { isMutatingToolName } from './harnessToolActions.ts';
 import { assertToolAllowed } from './harnessToolPermissions.ts';
 import type { HarnessProject, ToolPolicyProfile } from './harnessData.ts';
@@ -8,7 +8,7 @@ import type { GitState } from './harnessGit.ts';
 import { applyUnifiedPatch } from './harnessPatch.ts';
 
 export type ToolArea = 'files' | 'library' | 'workspace';
-export type ToolScope = { projects: HarnessProject[]; workspaceAccess: boolean; defaultProjectId: string; workspaceProjects?: HarnessProject[]; toolProfiles?: ToolPolicyProfile[]; conversationId?: string; conversationProfileId?: string; conversationPermissions?: HarnessProject['toolPermissions']; conversationApprovedTools?: string[] };
+export type ToolScope = { projects: HarnessProject[]; workspaceAccess: boolean; workspaceReadOnly?: boolean; defaultProjectId: string; workspaceProjects?: HarnessProject[]; toolProfiles?: ToolPolicyProfile[]; agentId?: string; conversationId?: string; conversationProfileId?: string; conversationPermissions?: HarnessProject['toolPermissions']; conversationApprovedTools?: string[] };
 export type ToolBackup = { version: 1; id: string; createdAt: string; projectId: string; area: ToolArea; path: string; fullPath: string; bytes: number; sha256: string };
 export type ToolFileEntry = { path: string; kind: 'file' | 'directory'; bytes?: number };
 export type ToolFilePage = { entries: ToolFileEntry[]; nextOffset: number | null; total: number };
@@ -367,7 +367,7 @@ export function browserFileTools(folder: FileSystemDirectoryHandle | null, scope
   const string = (description: string) => ({ type: 'string', description });
   return {
     definitions: ([
-      { type: 'function', function: { name: 'shell_readonly', description: 'Read-only project shell. Supports pwd, ls [-al] [path], and cat one text file. /workspace is this project’s Files area. No execution, scripts, pipes, or writes.', parameters: { type: 'object', properties: { command: string('One read-only command, for example ls -la /workspace/') }, required: ['command'] } } },
+      { type: 'function', function: { name: 'shell_readonly', description: 'Read-only project shell: pwd, ls [-al] [folder], cat one text file, or rg "literal phrase" [folder]. /workspace is this project’s Files area. No execution, scripts, pipes, or writes.', parameters: { type: 'object', properties: { command: string('One read-only command, for example rg "function name" /workspace/src') }, required: ['command'] } } },
       { type: 'function', function: { name: 'list_files', description: 'List one page of a folder inside the allowed project or workspace. Use nextOffset to read later pages.', parameters: parameters({ path: string('Relative subfolder; omit for the root.'), offset: { type: 'number', description: 'Zero-based entry offset; omit for the first page.' } }) } },
       { type: 'function', function: { name: 'read_file', description: 'Read a bounded byte range of a text or code file.', parameters: parameters({ path: string('Relative file path.'), offset: { type: 'number', description: 'Starting byte offset.' }, length: { type: 'number', description: 'Maximum bytes, up to 16000.' } }, ['path']) } },
       { type: 'function', function: { name: 'check_syntax', description: 'Check a saved JavaScript, TypeScript, JSX, TSX, or JSON file for parse errors. Does not run code, check types, or resolve imports.', parameters: parameters({ path: string('Relative code or JSON file path, up to 200 KB.') }, ['path']) } },
@@ -411,8 +411,10 @@ export function browserFileTools(folder: FileSystemDirectoryHandle | null, scope
       }
       if (name === 'shell_readonly') {
         const command = parseReadOnlyShell(String(args.command || ''));
+        assertToolAllowed(scope, shellCommandPermission(command.name), scope.defaultProjectId);
         if (command.name === 'pwd') return '/workspace';
         if (command.name === 'cat') return readToolFile(folder, scope, scope.defaultProjectId, 'files', command.path);
+        if (command.name === 'rg') return searchToolFiles(folder, scope, scope.defaultProjectId, 'files', command.query, command.path, signal);
         const page = await listToolFilesPage(folder, scope, scope.defaultProjectId, 'files', command.path);
         return `${page.entries.map(entry => `${entry.kind === 'directory' ? 'd' : '-'} ${entry.bytes ?? '-'} ${entry.path}`).join('\n') || '(empty folder)'}${page.nextOffset !== null ? `\n[More entries: use list_files at offset ${page.nextOffset}.]` : ''}`;
       }

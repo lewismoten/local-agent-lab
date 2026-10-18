@@ -18,7 +18,7 @@ export default function HarnessResponseDiagnostics({ report, loading, error, mes
     {loading && <p role="status">Opening saved diagnostics…</p>}
     {error && <p role="alert" className="harness-response-report-error">{error}</p>}
     {report && <>
-      <div className="harness-response-report-stats"><span>Input <strong>{report.usage.inputTokens?.toLocaleString() ?? '—'}</strong></span><span>Output <strong>{report.usage.outputTokens?.toLocaleString() ?? '—'}</strong></span><span>Elapsed <strong>{(report.usage.elapsedMs / 1000).toFixed(1)}s</strong></span><span>Speed <strong>{report.usage.observedTokensPerSecond === null ? '—' : `${report.usage.observedTokensPerSecond} tok/s`}</strong></span><span>Seed <strong>{report.sampling.seed ?? 'Default'}</strong></span><span>Temperature <strong>{report.sampling.temperature ?? 'Default'}</strong></span></div>
+      <div className="harness-response-report-stats"><span>Input <strong>{report.usage.inputTokens?.toLocaleString() ?? '—'}</strong></span><span>Output <strong>{report.usage.outputTokens?.toLocaleString() ?? '—'}</strong></span><span>Elapsed <strong>{(report.usage.elapsedMs / 1000).toFixed(1)}s</strong></span><span>Speed <strong>{report.usage.observedTokensPerSecond === null ? '—' : `${report.usage.observedTokensPerSecond} tok/s`}</strong></span><span>Seed <strong>{report.sampling.seed ?? 'Runtime default'}</strong></span><span>Temperature <strong>{report.sampling.temperature ?? 'Runtime default'}</strong></span></div>
       <p className="harness-muted">{report.sampling.note}</p>
       <section><h3>Model</h3><pre>{modelStampDetails(report.model)}</pre></section>
       <section><h3>System instructions</h3><pre>{report.input.system}</pre></section>

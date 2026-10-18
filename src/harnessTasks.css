@@ -1,0 +1,32 @@
+.harness-tasks-page .harness-heading { align-items: center; }
+.harness-task-layout { display: grid; grid-template-columns: minmax(235px, 300px) minmax(0, 1fr); gap: 18px; align-items: start; padding: 18px; }
+.harness-task-form { display: grid; gap: 12px; position: sticky; top: 16px; }
+.harness-task-form h2 { margin: 0 0 4px; }
+.harness-task-form label { display: grid; gap: 6px; font-size: .82rem; color: var(--h-muted); }
+.harness-task-form input:not([type=checkbox]), .harness-task-form textarea, .harness-task-form select,
+.harness-task-card select, .harness-task-note input { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--h-line); border-radius: 7px; background: var(--h-panel-2); color: var(--h-text); font: inherit; }
+.harness-task-form textarea { resize: vertical; }
+.harness-task-form .harness-task-check { display: flex; align-items: start; gap: 8px; line-height: 1.4; }
+.harness-task-check input { margin-top: 2px; accent-color: var(--h-cyan); }
+.harness-task-list { display: grid; gap: 12px; min-width: 0; }
+.harness-task-list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--h-muted); }
+.harness-task-list-head label { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; }
+.harness-task-card { display: grid; gap: 12px; }
+.harness-task-card-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.harness-task-card-head small { color: var(--h-cyan); letter-spacing: .08em; font-size: .68rem; }
+.harness-task-card-head h2 { margin: 5px 0 0; font-size: 1.05rem; }
+.harness-task-card-head select { width: auto; flex: none; }
+.harness-task-description, .harness-task-card li p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.harness-task-card details { border-top: 1px solid var(--h-line); padding-top: 9px; }
+.harness-task-card details summary { cursor: pointer; }
+.harness-task-card ol { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 10px; }
+.harness-task-card li small { color: var(--h-muted); }
+.harness-task-note { display: flex; gap: 8px; }
+.harness-task-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.harness-task-actions > span { margin-left: auto; color: var(--h-muted); font-size: .75rem; }
+.harness-task-empty { display: grid; justify-items: center; gap: 5px; color: var(--h-muted); }
+@media (max-width: 760px) {
+  .harness-task-layout { grid-template-columns: 1fr; padding: 12px; }
+  .harness-task-form { position: static; }
+  .harness-task-card-head { flex-wrap: wrap; }
+}

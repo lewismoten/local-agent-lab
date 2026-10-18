@@ -68,6 +68,7 @@ test('an older workspace opens with missing optional settings defaulted in memor
   delete original.modelPreferences;
   delete original.identities;
   delete original.agents;
+  delete original.workspaceToolAccess;
   const raw = JSON.stringify(original);
   await writeBlob(folder, path, new Blob([raw]));
   const opened = await openFolderWorkspace(folder);
@@ -75,7 +76,16 @@ test('an older workspace opens with missing optional settings defaulted in memor
   assert.deepEqual(opened.manifest.modelPreferences.chat, []);
   assert.ok(opened.manifest.identities.length);
   assert.deepEqual(opened.manifest.agents, []);
+  assert.equal(opened.manifest.workspaceToolAccess, 'full');
   assert.equal(await (await readBlob(folder, path)).text(), raw);
+});
+
+test('workspace model access stays read-only after reopening the same portable folder', async () => {
+  const folder = new MemoryDirectory();
+  const opened = await openFolderWorkspace(folder);
+  await opened.store.updateManifest(current => ({ ...current, workspaceToolAccess: 'read-only' }));
+  const reopened = await openFolderWorkspace(folder);
+  assert.equal(reopened.manifest.workspaceToolAccess, 'read-only');
 });
 
 test('recovers a chunk write that was interrupted before conversation metadata was saved', async () => {

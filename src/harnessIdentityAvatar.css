@@ -1,0 +1,18 @@
+.harness-identity-avatar { display: inline-grid; place-items: center; flex: none; overflow: hidden; border: 1px solid #78e9df8c; border-radius: 12px 4px 12px 4px; color: #bcfff3; background: radial-gradient(circle at 30% 20%, #456b83, #1b2b4a 70%); box-shadow: inset 0 1px #ffffff34, 0 0 20px #5cebe82b; }
+.harness-identity-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.harness-identity-avatar svg { filter: drop-shadow(0 0 7px #a0fff16b); }
+.harness-identity-card .harness-identity-avatar { transition: transform .22s ease, box-shadow .22s ease; }
+.harness-identity-card:hover .harness-identity-avatar { transform: rotate(-4deg) scale(1.04); box-shadow: inset 0 1px #ffffff44, 0 0 28px #72f2e770; }
+.harness-identity-icon-grid { display: flex; flex-wrap: wrap; gap: 7px; margin: 7px 0 14px; }
+.harness-identity-icon-grid button { display: inline-grid; justify-items: center; gap: 3px; min-width: 62px; padding: 8px 6px; border: 1px solid #46677f; border-radius: 8px; color: var(--h-muted); background: #12263a; font-size: 10px; }
+.harness-identity-icon-grid button[aria-pressed="true"] { color: #e7fffb; border-color: var(--h-cyan); background: #245263; box-shadow: 0 0 14px #71f7e930; }
+.harness-identity-icon-grid button:hover { border-color: #92f5e9; }
+.harness-identity-avatar-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.harness-identity-avatar-controls .harness-identity-avatar { margin-right: 5px; }
+.harness-identity-avatar-controls input[type="file"] { display: none; }
+.harness-identity-avatar-progress { color: var(--h-muted); font-size: 11px; }
+.harness-identity-avatar-prompt { margin-top: 8px; }
+.harness-identity-avatar-prompt textarea { width: 100%; }
+.harness-identity-generate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.harness-message-avatar .harness-identity-avatar { width: 100% !important; height: 100% !important; border: 0; border-radius: inherit; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .harness-identity-card .harness-identity-avatar { transition: none; } .harness-identity-card:hover .harness-identity-avatar { transform: none; } }

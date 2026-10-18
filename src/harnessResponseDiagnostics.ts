@@ -12,9 +12,20 @@ export type ResponseDiagnostic = {
   sampling: { seed: number | null; temperature: number | null; note: string };
 };
 
+function submittedNumber(rounds: InferenceRound[] | undefined, key: 'seed' | 'temperature'): number | null {
+  const values = rounds?.map(round => round.request[key]);
+  if (!values?.length || values.some(value => typeof value !== 'number' || !Number.isFinite(value))) return null;
+  return values.every(value => value === values[0]) ? values[0] as number : null;
+}
+
 /** Keep credentials out of downloadable reports. Absent runtime settings stay unknown. */
-export function responseDiagnostic(config: AIConfig, stamp: ModelStamp, prompt: { system: string; turns: ChatTurn[] }, completion: Completion, elapsedMs: number, observedTokensPerSecond?: number): ResponseDiagnostic {
-  const bonsai = config.provider === 'compatible' && config.runtimePreset === 'bonsai2';
+export function responseDiagnostic(_config: AIConfig, stamp: ModelStamp, prompt: { system: string; turns: ChatTurn[] }, completion: Completion, elapsedMs: number, observedTokensPerSecond?: number): ResponseDiagnostic {
+  const seed = submittedNumber(completion.rounds, 'seed');
+  const temperature = submittedNumber(completion.rounds, 'temperature');
+  const varied = (['seed', 'temperature'] as const).filter(key => {
+    const values = completion.rounds?.map(round => round.request[key]);
+    return values && values.length > 1 && values.some(value => value !== values[0]);
+  });
   return {
     version: 2,
     createdAt: new Date().toISOString(),
@@ -29,9 +40,11 @@ export function responseDiagnostic(config: AIConfig, stamp: ModelStamp, prompt: 
       observedTokensPerSecond: observedTokensPerSecond && Number.isFinite(observedTokensPerSecond) ? Math.round(observedTokensPerSecond * 10) / 10 : null,
     },
     sampling: {
-      seed: null,
-      temperature: bonsai ? config.thinkingTokens > 0 ? 1 : .7 : null,
-      note: bonsai ? 'Bonsai 2 server preset; seed is not set by this app.' : 'Seed and temperature are not set by this app; the model runtime chooses its defaults.',
+      seed,
+      temperature,
+      note: varied.length
+        ? `${varied.join(' and ')} varied between model rounds. See each request below for the submitted values.`
+        : 'Values shown here were submitted in every model round. An omitted value uses the model runtime default.',
     },
   };
 }

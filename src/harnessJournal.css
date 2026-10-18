@@ -1,0 +1,29 @@
+.harness-journal-explain { display: flex; align-items: center; gap: 10px; margin: 16px 18px 0; padding: 10px 14px; border: 1px solid var(--h-line); border-radius: 9px; color: var(--h-muted); background: var(--h-panel); font-size: .82rem; }
+.harness-journal-explain > svg { flex: none; color: var(--h-cyan); }
+.harness-journal-explain > span { flex: 1; }
+.harness-journal-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); gap: 18px; align-items: start; padding: 18px; }
+.harness-journal-dates { display: grid; gap: 4px; }
+.harness-journal-dates > button { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--h-muted); text-align: left; cursor: pointer; }
+.harness-journal-dates > button:hover, .harness-journal-dates > button.active { border-color: var(--h-line); background: var(--h-panel-2); color: var(--h-text); }
+.harness-journal-dates > button.active { box-shadow: inset 3px 0 var(--h-cyan); }
+.harness-journal-entries { min-width: 0; }
+.harness-journal-article { max-width: 850px; padding: clamp(18px, 3vw, 36px); }
+.harness-journal-article > header { padding-bottom: 15px; border-bottom: 1px solid var(--h-line); }
+.harness-journal-article > header h2 { margin: 5px 0; font-size: clamp(1.45rem, 2.5vw, 2.1rem); }
+.harness-journal-article > header p { margin: 0; color: var(--h-muted); font-size: .8rem; }
+.harness-journal-topic { padding: 24px 0; border-bottom: 1px solid var(--h-line); }
+.harness-journal-topic:last-child { border-bottom: 0; padding-bottom: 0; }
+.harness-journal-topic > span { color: var(--h-cyan); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; }
+.harness-journal-topic h3 { margin: 8px 0 12px; font-size: 1.2rem; }
+.harness-journal-topic p { margin: 0; max-width: 70ch; line-height: 1.7; overflow-wrap: anywhere; }
+.harness-journal-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.harness-journal-links button { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--h-cyan); font: inherit; font-size: .78rem; cursor: pointer; }
+.harness-journal-empty { display: grid; justify-items: center; gap: 8px; padding: 45px 20px; text-align: center; }
+.harness-journal-empty > svg { color: var(--h-cyan); }
+.harness-journal-empty h2, .harness-journal-empty p { margin: 0; }
+@media (max-width: 760px) {
+  .harness-journal-layout { grid-template-columns: 1fr; padding: 12px; }
+  .harness-journal-dates { display: flex; overflow-x: auto; }
+  .harness-journal-dates > button { min-width: max-content; }
+  .harness-journal-explain { margin: 12px; }
+}
