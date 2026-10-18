@@ -8,9 +8,11 @@ import { inspectGreenLeafTestImage } from './imageTestQuality';
 import { showCompletionToast, showToast } from './toastStore';
 import { clearImageReadyForPreset, markImageReady } from './imageSession';
 import { IMAGE_PRESETS, browserImagePresetForGroup, generateImage, type ImageConfig } from './imageGeneration';
+import { imageRunProvenance, saveImageOutput } from './imageProvenance.ts';
 import { DEFAULT_IMAGE_TEST_PROMPT, isReferenceImagePrompt, loadImageTestPrompt, saveImageTestPrompt } from './imageTestPrompt';
+import { captureVisualTestEnvironment, type VisualTestEnvironment } from './visualTestEnvironment.ts';
 
-type Result = { file: string; checkedAt: string; runtime: string; scheduler: string; scoringVersion: number; tests: { files: { result: string; detail: string }; imageGeneration: { result: string; detail: string; prompt: string; seed: number; evaluation: 'reference' | 'preview'; greenPercent?: number } }; savedPath?: string };
+type Result = { file: string; checkedAt: string; runtime: string; scheduler: string; scoringVersion: number; environment: VisualTestEnvironment; inferenceBackend?: 'WebGPU'; tests: { files: { result: string; detail: string }; imageGeneration: { result: string; detail: string; prompt: string; seed: number; evaluation: 'reference' | 'preview'; greenPercent?: number } }; provenance?: ReturnType<typeof imageRunProvenance>; outputPath?: string; outputMetadataPath?: string; outputSaveError?: string; savedPath?: string };
 type Props = { group: BrowserImageModelGroup; folder: FileSystemDirectoryHandle | null; imageConfig: ImageConfig; disabled?: boolean; openRequest?: { path: string; token: number } | null; onOpenRequestHandled?: () => void };
 const seed = 42;
 
@@ -46,7 +48,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
     setBusy(true); setError(''); setPreviews([]); setFinalImageUrl(''); setStep(0); setPhase('Checking files…');
     const started = performance.now();
     const next: Result = {
-      file: path, checkedAt: new Date().toISOString(), runtime: 'ONNX image engine', scheduler: group === 'model' ? 'Euler' : group === 'sdxs' ? 'One-step Euler' : group === 'lcm' ? 'LCM' : group === 'supra-mobile' ? 'Euler rectified flow' : 'DPM++ 2M', scoringVersion: 3,
+      file: path, checkedAt: new Date().toISOString(), runtime: 'ONNX image engine', scheduler: group === 'model' ? 'Euler' : group === 'sdxs' ? 'One-step Euler' : group === 'lcm' ? 'LCM' : group === 'supra-mobile' ? 'Euler rectified flow' : 'DPM++ 2M', scoringVersion: 3, environment: captureVisualTestEnvironment(),
       tests: {
         files: { result: 'inconclusive', detail: 'Checking model and engine assets.' },
         imageGeneration: { result: 'inconclusive', detail: 'Not run.', prompt: runPrompt, seed, evaluation: reference ? 'reference' : 'preview' },
@@ -63,6 +65,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
       const image = await generateImage(IMAGE_PRESETS[preset], runPrompt, run.signal, setPhase, value => {
         setPreviews(current => [...current, { step: value.step, url: browserImagePreviewDataUrl(value.imageData) }]);
       }, folder, value => setStep(value), seed);
+      next.inferenceBackend = 'WebGPU';
       const quality = reference ? await inspectGreenLeafTestImage(image) : null;
       const bitmap = quality ? null : await createImageBitmap(image);
       const width = quality?.width ?? bitmap!.width, height = quality?.height ?? bitmap!.height;
@@ -77,6 +80,16 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
         : reference ? passed ? `Generated a ${size} image with visible green content; review the preview for the leaf.` : `Decoded a ${size} image, but the green-leaf test found only ${quality!.greenPercent}% green pixels.${group === 'tiny-q4' ? ' Try Tiny-SD FP16.' : ' Review the preview.'}`
         : `Generated a ${size} image. Review the preview for prompt match.`;
       next.tests.imageGeneration = { result: passed ? 'passed' : 'failed', detail, prompt: runPrompt, seed, evaluation: reference ? 'reference' : 'preview', ...(quality ? { greenPercent: quality.greenPercent } : {}) };
+      const outputPath = `outputs/images/${group}-${next.checkedAt.replace(/[:.]/g, '-')}-${crypto.randomUUID()}.png`;
+      next.provenance = imageRunProvenance(IMAGE_PRESETS[preset], runPrompt, outputPath, next.checkedAt, seed);
+      try {
+        const saved = await saveImageOutput(folder, image, IMAGE_PRESETS[preset], runPrompt, outputPath, next.checkedAt, seed);
+        next.outputPath = outputPath;
+        next.outputMetadataPath = saved.metadataPath;
+      } catch (cause) {
+        next.outputSaveError = cause instanceof Error ? cause.message : String(cause);
+        setError(`Image generated, but could not save the output: ${next.outputSaveError}`);
+      }
       if (passed && imageConfig.preset === preset) markImageReady(imageConfig);
       if (!passed) clearImageReadyForPreset(preset);
       if (reference) await recordCapability(folder, path, label, 'imageGeneration', passed ? 'passed' : 'failed', detail, browserImageTotal(group));
@@ -114,7 +127,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
       <label className="field image-test-prompt"><span>Prompt</span><textarea rows={2} maxLength={4000} value={promptText} disabled={busy} onChange={event => { setPromptText(event.target.value); saveImageTestPrompt(preset, event.target.value); }}/></label>
       <div className="settings-actions"><button className="button primary compact" type="button" disabled={!folder || busy || !promptText.trim()} onClick={() => void inspect()}>{busy ? 'Generating…' : isReferenceImagePrompt(promptText) ? 'Run image test' : 'Generate image'}</button>{busy && <button className="button danger compact" type="button" disabled={controller.current?.signal.aborted} onClick={() => { controller.current?.abort(); setPhase('Stopping…'); }}>Stop</button>}<button className="button secondary compact" type="button" disabled={busy || isReferenceImagePrompt(promptText)} onClick={() => { setPromptText(DEFAULT_IMAGE_TEST_PROMPT); saveImageTestPrompt(preset, DEFAULT_IMAGE_TEST_PROMPT); }}>Reset prompt</button><button className="button secondary compact" type="button" disabled={!report || busy} onClick={() => void copy()}>Copy JSON</button><button className="button secondary compact" type="button" disabled={busy} onClick={() => dialog.current?.close()}>Close</button></div>
       {busy && <div className="image-step-progress" role="status"><progress aria-label="Image test steps" value={step} max={steps}/><span>{step}/{steps}</span>{phase && !phase.startsWith('Generating image ·') && <span>{phase}</span>}</div>}
-      {report && <div className="image-model-results"><p>{report.tests.files.result === 'passed' ? '✅' : report.tests.files.result === 'failed' ? '❌' : '❔'} Files: {report.tests.files.detail}</p><p>{report.tests.imageGeneration.result === 'passed' ? '✅' : report.tests.imageGeneration.result === 'failed' ? '❌' : '❔'} Image generation: {report.tests.imageGeneration.detail}</p><p><strong>Prompt used:</strong> {report.tests.imageGeneration.prompt}</p>{report.savedPath && <p className="muted">Report saved to {report.savedPath}</p>}</div>}
+      {report && <div className="image-model-results"><p>{report.tests.files.result === 'passed' ? '✅' : report.tests.files.result === 'failed' ? '❌' : '❔'} Files: {report.tests.files.detail}</p><p>{report.tests.imageGeneration.result === 'passed' ? '✅' : report.tests.imageGeneration.result === 'failed' ? '❌' : '❔'} Image generation: {report.tests.imageGeneration.detail}</p><p><strong>Prompt used:</strong> {report.tests.imageGeneration.prompt}</p>{report.outputPath && <p className="muted">Image saved to {report.outputPath}</p>}{report.savedPath && <p className="muted">Report saved to {report.savedPath}</p>}</div>}
       {previews.length > 0 && <div className="image-preview-sequence"><figure><img className="image-generator-preview" src={previews[previews.length - 1].url} alt={`${label} test preview after step ${previews[previews.length - 1].step}`}/><figcaption>Step {previews[previews.length - 1].step}/{steps}{busy ? ' · preview' : ''}</figcaption></figure><div className="image-preview-strip" aria-label="Image generation stages">{previews.map(item => <figure key={item.step}><img src={item.url} alt={`Step ${item.step} of ${steps}`}/><figcaption>{item.step}/{steps}</figcaption></figure>)}</div></div>}
       {finalImageUrl && <a className="button secondary compact" href={finalImageUrl} download={`${group}-image.png`}>Download image</a>}
       {error && !Object.values(report?.tests || {}).some(test => test.detail === error) && <p className="model-error" role="alert">{error}</p>}

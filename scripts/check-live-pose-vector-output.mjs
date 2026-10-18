@@ -112,17 +112,29 @@ try {
       }
       if (report?.posePath) {
         const saved = JSON.parse(await (await (await import('/src/storage.ts')).readBlob(await (await import('/src/storage.ts')).browserFiles(), report.posePath)).text());
-        artifact = { type: 'pose', frames: saved.frames?.length, people: saved.frames?.[0]?.landmarks?.length, landmarks: saved.frames?.[0]?.landmarks?.[0]?.length };
+        artifact = { type: 'pose', frames: saved.frames?.length, people: saved.frames?.[0]?.landmarks?.length, landmarks: saved.frames?.[0]?.landmarks?.[0]?.length,
+          modelHashCount: saved.modelPackage?.files?.length || 0, runtimeHashCount: saved.runtimePackage?.files?.length || 0 };
       }
+      const artifactPath = report?.svgPath || report?.posePath;
+      const sidecar = artifactPath ? JSON.parse(await (await (await import('/src/storage.ts')).readBlob(
+        await (await import('/src/storage.ts')).browserFiles(), artifactPath + '.meta.json')).text()) : null;
       return { text, preview: !!preview && preview.complete && preview.naturalWidth > 0, artifact,
+        sidecar: sidecar && { artifactPath: sidecar.artifactPath, modelPackage: sidecar.modelPackage, runtimePackage: sidecar.runtimePackage },
         report: report && { result: report.result, detail: report.detail, frames: report.frames, people: report.people,
-          svgPath: report.svgPath, posePath: report.posePath, savedPath: report.savedPath } };
+          svgPath: report.svgPath, posePath: report.posePath, savedPath: report.savedPath,
+          modelPackage: report.modelPackage, runtimePackage: report.runtimePackage } };
     })()`);
     assert.equal(result.report?.result, 'passed', `${item.id} should save a passed report: ${result.text}`);
     assert.ok(result.preview, `${item.id} preview should decode`);
     assert.ok(result.text.includes('✅'));
+    assert.equal(result.report.modelPackage?.path, item.path, `${item.id} should save its model ID`);
+    assert.ok(result.report.modelPackage?.files?.every(file => /^[a-f0-9]{64}$/.test(file.sha256)), `${item.id} should save pinned model hashes`);
+    assert.ok(result.report.runtimePackage?.files?.length > 0 && result.report.runtimePackage.files.every(file => /^[a-f0-9]{64}$/.test(file.sha256)), `${item.id} should save runtime hashes`);
+    assert.equal(result.sidecar?.artifactPath, result.report.svgPath || result.report.posePath, `${item.id} output should have a sidecar`);
+    assert.equal(result.sidecar?.modelPackage?.path, item.path, `${item.id} sidecar should retain the model path`);
+    assert.ok(result.sidecar?.runtimePackage?.files?.length > 0, `${item.id} sidecar should retain engine files`);
     if (item.id === 'vector') assert.ok(result.artifact?.paths >= 4 && result.artifact.width === '256' && result.artifact.height === '256', 'SVG contains editable shapes');
-    if (item.id === 'pose') assert.ok(result.artifact?.frames === 1 && result.artifact.people >= 1 && result.artifact.landmarks === 33, 'Pose file contains 33 body landmarks');
+    if (item.id === 'pose') assert.ok(result.artifact?.frames === 1 && result.artifact.people >= 1 && result.artifact.landmarks === 33 && result.artifact.modelHashCount > 0 && result.artifact.runtimeHashCount > 0, 'Pose file contains landmarks and package hashes');
     const layouts = [];
     for (const [width, height] of [[1440, 900], [390, 844]]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 500 });

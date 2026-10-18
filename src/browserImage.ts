@@ -3,6 +3,7 @@ import { clipTokenizer } from './clipTokenizer';
 import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 import { unloadLocalOllama } from './localOllama.ts';
 import type { Ort, TinyPipeline } from './tinySdPipeline.ts';
+import { visualRuntimeFailure, visualRuntimeFailureMessage } from './visualRuntimeFailure.ts';
 
 type Pipeline = {
   loadModels: (progress?: (value: { stage: string; model: string; index: number; total: number }) => void) => Promise<void>;
@@ -30,7 +31,7 @@ type RuntimeGlobal = typeof globalThis & {
 
 let folder: FileSystemDirectoryHandle | null = null;
 let pipeline: Pipeline | null = null;
-registerResidentModel('image', () => pipeline !== null, unloadBrowserImageModel);
+registerResidentModel('image', () => pipeline !== null, unloadBrowserImageModel, 5 * 60_000);
 let loadedFor: FileSystemDirectoryHandle | null = null;
 let loadedGroup: BrowserImageModelGroup | null = null;
 let loading: Promise<Pipeline> | null = null;
@@ -185,7 +186,13 @@ async function ready(group: BrowserImageModelGroup, progress?: (message: string)
   loading = load(target, group, report).then(async instance => {
     if (folder !== target) { await instance.release(); throw new Error('The connected workspace changed while loading the image model.'); }
     pipeline = instance; loadedFor = target; loadedGroup = group; publish({ state: 'ready', message: 'Image model loaded', folder: target }); return instance;
-  }).catch(error => { runtimeSource = null; revokeUrls(); publish({ state: 'error', message: error instanceof Error ? error.message : String(error), folder: target }); throw error; }).finally(() => { loading = null; });
+  }).catch(error => {
+    runtimeSource = null; revokeUrls();
+    const message = visualRuntimeFailureMessage(error);
+    publish({ state: 'error', message, folder: target });
+    if (visualRuntimeFailure(error)) throw new Error(message, { cause: error });
+    throw error;
+  }).finally(() => { loading = null; });
   return loading;
 }
 
@@ -233,6 +240,12 @@ export async function generateBrowserImage(prompt: string, signal?: AbortSignal,
       result = group === 'model' || group === 'sdxs' || group === 'lcm' || group === 'supra-mobile'
         ? await model.generate(prompt, { seed: options.seed, steps, onProgress })
         : await (await import('./tinySdPipeline.ts')).generateTinySd(model as unknown as TinyPipeline, globalRuntime.ort as unknown as Ort, prompt, steps, onProgress, options.seed, guidanceScale);
+    } catch (cause) {
+      if (visualRuntimeFailure(cause)) {
+        await unloadBrowserImageModel().catch(() => {});
+        throw new Error(`${visualRuntimeFailureMessage(cause)} The image model was unloaded.`, { cause });
+      }
+      throw cause;
     } finally { model.onPreview = undefined; }
     if (signal?.aborted) throw signal.reason;
     const canvas = document.createElement('canvas');

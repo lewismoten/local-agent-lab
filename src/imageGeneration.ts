@@ -41,7 +41,14 @@ function imageBlobFromBase64(encoded: string): Blob {
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: 'image/png' });
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  const type = bytes[0] === 0x89 && ascii(1, 4) === 'PNG' ? 'image/png'
+    : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? 'image/jpeg'
+      : ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP' ? 'image/webp'
+        : ascii(0, 3) === 'GIF' ? 'image/gif'
+          : ascii(4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(8, 12)) ? 'image/avif' : '';
+  if (!type) throw new Error('The image provider returned an unsupported image format.');
+  return new Blob([bytes], { type });
 }
 
 export async function generateImage(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void, workspace?: FileSystemDirectoryHandle | null, onStep?: (step: number, totalSteps: number) => void, seed?: number): Promise<Blob> {

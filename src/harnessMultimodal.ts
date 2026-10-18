@@ -15,7 +15,7 @@ import { browserModelPreferenceTools, modelPreferenceReview } from './harnessPre
 import type { ConversationMeta } from './harnessData.ts';
 import type { HarnessStore } from './harnessStore.ts';
 import { generateImage, imageConfigured, type ImageConfig } from './imageGeneration.ts';
-import { writeBlob } from './storage.ts';
+import { imageExtensionFromMimeType, saveImageOutput } from './imageProvenance.ts';
 import { harnessToolIntent, selectHarnessToolDefinitions, toolSchemaTokens } from './harnessToolSelection.ts';
 import { toolFailureMessage } from './harnessToolFailure.ts';
 import { isMutatingToolName } from './harnessToolActions.ts';
@@ -319,14 +319,15 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
         if (!prompt || prompt.length > 2000) throw new Error('Image prompt must be between 1 and 2000 characters.');
         const stem = String(call.arguments.filename || 'generated-image').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 45) || 'generated-image';
         const id = crypto.randomUUID();
-        const path = `harness/projects/${scope.defaultProjectId}/library/generated/${stem}-${id.slice(0, 8)}.png`;
+        const imageSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+        const pathBase = `harness/projects/${scope.defaultProjectId}/library/generated/${stem}-${id.slice(0, 8)}`;
         onProgress?.('Generating image…');
         let generated: Blob | null = null;
         let used: ImageConfig | null = null;
         const failures: string[] = [];
         try {
           for (const option of imageOptions) {
-            try { generated = await generateImage(option, prompt, signal, message => onProgress?.(message), undefined, folder); used = option; break; }
+            try { generated = await generateImage(option, prompt, signal, message => onProgress?.(message), undefined, folder, undefined, imageSeed); used = option; break; }
             catch (error) { if (signal?.aborted) throw error; failures.push(`${option.model}: ${error instanceof Error ? error.message : String(error)}`); }
           }
         }
@@ -338,12 +339,12 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
         }
         if (signal?.aborted) throw signal.reason || new DOMException('Stopped.', 'AbortError');
         if (!generated || !used) throw new Error(`Image generation failed with every configured option. ${failures.join(' | ')}`);
+        const path = `${pathBase}.${imageExtensionFromMimeType(generated.type)}`;
         await assertCurrentWorkspaceToolAccess(call.name, scope, args.history?.store);
         toolExecutionStarted = true;
-        await writeBlob(folder, path, generated);
+        await saveImageOutput(folder, generated, used, prompt, path, new Date().toISOString(), imageSeed);
         const message = `Image saved to ${path} (${generated.size.toLocaleString()} bytes).`;
         completedChanges.push(`generate_image: ${message}`);
-        await writeBlob(folder, path.replace(/\.png$/, '.json'), new Blob([JSON.stringify({ prompt, generatedAt: new Date().toISOString(), imageModel: used.model, imageProvider: used.provider, imagePreset: used.preset }, null, 2)], { type: 'application/json' }));
         toolEvents.push(`generate_image: ${message}`);
         (rounds.at(-1)!.toolResults ||= []).push({ name: 'generate_image', content: message });
         turns.push({ role: 'assistant', content: result.text || `Requested the generate_image tool for: ${prompt}` });

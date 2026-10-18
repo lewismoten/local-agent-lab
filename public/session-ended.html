@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Leave this computer · Local Agent Lab</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; color: #edf8ff; background: #07111e; }
+    body { min-height: 100dvh; display: grid; place-items: center; margin: 0; padding: 18px; box-sizing: border-box; background: radial-gradient(circle at 85% 8%, #2d2350, transparent 35%), radial-gradient(circle at 5% 95%, #12434c, transparent 42%), #07111e; }
+    main { width: min(100%, 490px); padding: 28px; border: 1px solid #548f9c; border-radius: 12px; background: #112337; box-shadow: 0 18px 50px #0008, inset 0 1px #d8fff021; }
+    h1 { margin: 0 0 10px; font-size: clamp(23px, 5vw, 30px); letter-spacing: -.025em; }
+    p { margin: 0 0 14px; color: #bed3df; }
+    #state { min-height: 1.5em; color: #9cf4e5; }
+    #errors { padding-left: 20px; color: #ffc1ce; overflow-wrap: anywhere; }
+    #errors:empty { display: none; }
+    button { display: none; padding: 9px 16px; border: 1px solid #9affeb; border-radius: 7px; color: #071722; background: #8df5e5; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+    small { display: block; margin-top: 18px; color: #a5b9c9; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Leave this computer</h1>
+    <p id="state" role="status">Checking cleanup request…</p>
+    <ul id="errors" aria-live="polite"></ul>
+    <button id="retry" type="button">Retry cleanup</button>
+    <small>Files on a connected drive are kept. Browser history is managed in your browser settings.</small>
+  </main>
+  <script>
+    (() => {
+      const armedKey = 'local-agent-lab:cleanup-armed';
+      const state = document.getElementById('state');
+      const errorsList = document.getElementById('errors');
+      const retry = document.getElementById('retry');
+      const token = location.hash.startsWith('#cleanup=') ? location.hash.slice('#cleanup='.length) : '';
+      const scope = new URL('./', location.href).href;
+      const localKeys = new Set(['story-project', 'ai-profiles', 'ai-selected-profile', 'image-generator', 'harness-settings-migrated', 'harness-project-id', 'harness-git-author-name', 'harness-git-author-email', 'model-download-queue', 'model-download-speed']);
+      const sessionKeys = new Set(['model-download-recovery', 'model-download-speed', 'model-download-url', 'browser-model-tab', 'browser-model-type', 'selected-speech-model', 'needle-selected-model', 'local-agent-lab-coi-reload', 'selected-book', 'selected-chapter', 'selected-character', 'selected-world', 'selected-influence', 'selected-source']);
+      const localPrefixes = ['rivers-of-memory:image-test-prompt:', 'gemma-terms-accepted-', 'qwen-research-accepted-'];
+      const sessionPrefixes = ['chat-draft:'];
+      const ownedKeys = (storage, exact, prefixes) => Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter(key => key && (exact.has(key) || prefixes.some(prefix => key.startsWith(prefix))));
+      const deleteDatabase = name => new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(name);
+        const timer = setTimeout(() => reject(new Error(`${name} is still open in another tab. Close that tab and retry.`)), 8000);
+        request.onsuccess = () => { clearTimeout(timer); resolve(); };
+        request.onerror = () => { clearTimeout(timer); reject(request.error || new Error(`${name} could not be cleared.`)); };
+        request.onblocked = () => { state.textContent = `Waiting for another tab to release ${name}…`; };
+      });
+      async function clean() {
+        if (!token || sessionStorage.getItem(armedKey) !== token) {
+          state.textContent = location.hash === '#done' ? 'Browser data cleared. You can close this tab.' : 'No cleanup request is active.';
+          return;
+        }
+        retry.style.display = 'none';
+        errorsList.replaceChildren();
+        const failures = [];
+        const step = async (label, work) => {
+          state.textContent = label;
+          try { await work(); }
+          catch (error) { failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`); }
+        };
+        await step('Clearing browser workspace and downloaded models…', async () => {
+          if (!navigator.storage?.getDirectory) return;
+          const root = await navigator.storage.getDirectory();
+          try { await root.removeEntry('local-agent-lab', { recursive: true }); }
+          catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+        });
+        for (const name of ['local-agent-lab', 'rivers-of-memory', 'rivers-story-chat']) {
+          await step(`Clearing ${name} browser records…`, () => deleteDatabase(name));
+        }
+        await step('Clearing this app’s offline files…', async () => {
+          if (!('caches' in window)) return;
+          for (const name of await caches.keys()) if (name.startsWith('local-agent-lab-shell-')) await caches.delete(name);
+        });
+        await step('Disconnecting this app’s offline worker…', async () => {
+          if (!('serviceWorker' in navigator)) return;
+          for (const registration of await navigator.serviceWorker.getRegistrations()) if (registration.scope === scope) await registration.unregister();
+        });
+        if (!failures.length) {
+          await step('Clearing browser preferences and drafts…', async () => {
+            for (const key of ownedKeys(localStorage, localKeys, localPrefixes)) localStorage.removeItem(key);
+            for (const key of ownedKeys(sessionStorage, sessionKeys, sessionPrefixes)) sessionStorage.removeItem(key);
+            sessionStorage.removeItem(armedKey);
+          });
+        }
+        if (failures.length) {
+          state.textContent = 'Cleanup could not finish. Close other tabs of this app, then retry.';
+          for (const message of failures) { const item = document.createElement('li'); item.textContent = message; errorsList.append(item); }
+          retry.style.display = 'inline-block';
+          return;
+        }
+        history.replaceState(null, '', '#done');
+        state.textContent = 'Browser data cleared. You can close this tab.';
+      }
+      retry.addEventListener('click', () => { void clean(); });
+      void clean();
+    })();
+  </script>
+</body>
+</html>

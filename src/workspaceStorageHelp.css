@@ -1,0 +1,9 @@
+.harness-workspace-heading { display: flex; align-items: center; gap: 5px; }
+.harness-workspace .harness-storage-info { display: inline-grid; place-items: center; width: 22px; height: 22px; min-height: 22px; padding: 0; border: 0; border-radius: 50%; color: var(--h-cyan); background: transparent; }
+.harness-workspace .harness-storage-info:hover { background: #245366; }
+.harness-workspace .harness-end-session { display: inline-flex; width: 100%; margin-top: 10px; color: #ffd1df; border-color: #8b5168; background: #452639; }
+.harness-workspace .harness-end-session:hover { color: #fff; border-color: #f39ab5; background: #67334b; }
+.harness-storage-dialog p, .harness-storage-dialog li { color: var(--h-muted); font-size: 13px; line-height: 1.55; }
+.harness-storage-dialog ul { margin: 9px 0 17px; padding-left: 19px; }
+.harness-storage-dialog li + li { margin-top: 7px; }
+.harness-storage-dialog form { display: flex; justify-content: flex-end; }

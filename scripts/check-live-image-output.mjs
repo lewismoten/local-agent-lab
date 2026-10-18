@@ -93,6 +93,20 @@ try {
     bitmap.close(); return result;
   })()`);
   assert.ok(image.bytes > 1000 && image.width > 0 && image.height > 0, 'the result should decode as an image');
+  const outputPath = /Image saved to (outputs\/images\/[^\s]+\.png)/.exec(result.report)?.[1];
+  assert.ok(outputPath, 'generated image should be saved in the workspace');
+  const saved = await evaluate(`(async () => {
+    const folder = await (await import('/src/storage.ts')).browserFiles();
+    const { readBlob } = await import('/src/storage.ts');
+    const path = ${JSON.stringify(outputPath)};
+    const image = await readBlob(folder, path);
+    const metadata = JSON.parse(await (await readBlob(folder, path.replace(/\\.png$/, '.json'))).text());
+    return { bytes: image.size, path: metadata.imagePath, seed: metadata.seed,
+      steps: metadata.settings?.steps, hashes: metadata.modelPackage?.files?.length || 0,
+      hasApiKey: JSON.stringify(metadata).includes('apiKey') };
+  })()`);
+  assert.ok(saved.bytes > 1000 && saved.path === outputPath && saved.seed === 42 && saved.steps === 20 && saved.hashes > 0 && !saved.hasApiKey,
+    `workspace image provenance is incomplete: ${JSON.stringify(saved)}`);
   const layouts = [];
   for (const [width, height] of [[1440, 900], [390, 844]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 500 });
@@ -111,7 +125,7 @@ try {
     const screenshot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(`/tmp/rivers-image-output-${width}.png`, Buffer.from(screenshot.data, 'base64'));
   }
-  console.log(JSON.stringify({ result, image, layouts }, null, 2));
+  console.log(JSON.stringify({ result, image, saved, layouts }, null, 2));
 } finally {
   if (snapshot && socket.readyState === WebSocket.OPEN) {
     try {

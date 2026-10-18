@@ -137,6 +137,21 @@ export async function writeBlob(root: FileSystemDirectoryHandle, path: string, b
     }
   }
 }
+export async function writeStream(root: FileSystemDirectoryHandle, path: string, produce: (writer: FileSystemWritableFileStream) => Promise<void>): Promise<void> {
+  const parts = path.split('/');
+  const name = parts.pop()!;
+  const dir = await directoryAt(root, parts, true);
+  let existed = true;
+  try { await dir.getFileHandle(name); }
+  catch (error) { if (!missingEntry(error)) throw error; existed = false; }
+  const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
+  try { await produce(writer); await writer.close(); }
+  catch (error) {
+    try { await writer.abort(); } catch { /* Preserve the original error. */ }
+    if (!existed) try { await dir.removeEntry(name); } catch { /* Preserve the original error. */ }
+    throw error;
+  }
+}
 export async function removeBlob(root: FileSystemDirectoryHandle, path: string): Promise<void> {
   const parts = path.split('/');
   const name = parts.pop()!;

@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { modelDownloadManager } from './modelDownloadSession.ts';
 import { showToast } from './toastStore.ts';
+import { VISUAL_PACKAGE_LIMIT_BYTES, visualPackageLimitMessage } from './visualLimit.ts';
 
 type Asset = { name: string; url: string; bytes: number; sha256: string; label: string };
 const PREVIOUS_ONNX_SCRIPT = { name: 'ort.webgpu.min.js', bytes: 357648, sha256: '4dec2f5e74de2ec0f496d39ef55ec23762e8c6ca58cb958e691c9f2350a7b1c8' };
@@ -238,6 +239,16 @@ export async function transferBrowserImageAsset(dir: FileSystemDirectoryHandle, 
 function startNext(folder: FileSystemDirectoryHandle) {
   if (task || state.paused || state.folder !== folder || !state.queue.length) return;
   const [group, ...queue] = state.queue;
+  if (group !== 'engine') {
+    const packageBytes = browserImageTotal(group) + browserImageTotal('engine');
+    if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES) {
+      const error = visualPackageLimitMessage(browserImageModelLabel(group), packageBytes);
+      publish({ queue, error, revision: state.revision + 1 });
+      showToast(error, 'error');
+      startNext(folder);
+      return;
+    }
+  }
   const aborter = new AbortController(); controller = aborter;
   publish({ active: group, queue, current: '', error: '' });
   task = (async () => {
@@ -302,6 +313,10 @@ export const browserImageAssetsManager = {
   queue(folder: FileSystemDirectoryHandle, group: Group) {
     if (state.folder && state.folder !== folder && task) throw new Error('An image download is active in another workspace.');
     if (state.folder === folder && (state.installed[group] || state.active === group || state.queue.includes(group))) return;
+    if (group !== 'engine') {
+      const packageBytes = browserImageTotal(group) + browserImageTotal('engine');
+      if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES) throw new Error(visualPackageLimitMessage(browserImageModelLabel(group), packageBytes));
+    }
     publish({ folder, queue: [...(state.folder === folder ? state.queue : []), group], paused: state.folder === folder && state.paused });
     startNext(folder);
   },

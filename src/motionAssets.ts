@@ -1,8 +1,11 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { showToast } from './toastStore.ts';
 import { getModelDownload } from './modelDownloadSession.ts';
+import { browserImageTotal } from './browserImageAssets.ts';
+import { VISUAL_PACKAGE_LIMIT_BYTES, visualPackageLimitMessage } from './visualLimit.ts';
 
-export type MotionModel = 'depth' | 'rife' | 'pose' | 'vector' | 'tripo';
+export const MOTION_MODEL_IDS = ['depth', 'rife', 'pose', 'vector', 'tripo'] as const;
+export type MotionModel = typeof MOTION_MODEL_IDS[number];
 export type MotionAssetId = MotionModel | 'pose_engine' | 'vector_engine';
 type Asset = { name: string; url: string; bytes: number; sha256: string };
 const mediaPipeLicense: Asset = { name: 'LICENSE.txt', url: 'https://raw.githubusercontent.com/google-ai-edge/mediapipe/800a56cc5004f6b0b0bb65134cc6c2ec12f0c88f/LICENSE', bytes: 12331, sha256: '8707eef0533987efc5b155d64761eeb6e20793f50b9bd1a68dad1cf4719d0ed8' };
@@ -17,7 +20,7 @@ export const MOTION_MODELS: Record<MotionAssetId, { label: string; path: string;
     ],
   },
   rife: {
-    label: 'RIFE 4.9', path: 'models/RIFE-4.9-ONNX', purpose: 'Creates in-between frames from two images; it does not predict a future scene.',
+    label: 'RIFE 4.9', path: 'models/RIFE-4.9-ONNX', purpose: 'Creates in-between frames across an ordered set of images; it does not predict a future scene.',
     source: 'https://huggingface.co/edgetools/rife', license: 'MIT',
     assets: [
       { name: 'LICENSE.txt', url: 'https://huggingface.co/edgetools/rife/resolve/321b593c5f36c26f5b08fa2838dcf5eece382fa0/LICENSE', bytes: 1086, sha256: 'f53bd020ea33bd02ba66146209e507f30e06b5ceff94d492961b9a8243d06398' },
@@ -71,9 +74,11 @@ export const MOTION_MODELS: Record<MotionAssetId, { label: string; path: string;
   },
 };
 export const motionModelForPath = (path: string): MotionModel | null =>
-  (['depth', 'rife', 'pose', 'vector', 'tripo'] as const).find(id => MOTION_MODELS[id].path === path) ?? null;
+  MOTION_MODEL_IDS.find(id => MOTION_MODELS[id].path === path) ?? null;
 
 export const motionTotal = (id: MotionAssetId) => MOTION_MODELS[id].assets.reduce((n, asset) => n + asset.bytes, 0);
+export const motionPackageBytes = (id: MotionModel) =>
+  motionTotal(id) + (id === 'pose' ? motionTotal('pose_engine') : id === 'vector' ? motionTotal('vector_engine') : browserImageTotal('engine'));
 export async function motionDirectory(folder: FileSystemDirectoryHandle, id: MotionAssetId, create = false) {
   const [rootName, childName] = MOTION_MODELS[id].path.split('/');
   const root = await folder.getDirectoryHandle(rootName, { create });
@@ -153,6 +158,16 @@ async function transfer(dir: FileSystemDirectoryHandle, asset: Asset, signal: Ab
 function next(folder: FileSystemDirectoryHandle) {
   if (task || state.folder !== folder || state.paused || !state.queue.length) return;
   const [id, ...rest] = state.queue;
+  if (id !== 'pose_engine' && id !== 'vector_engine') {
+    const bytes = motionPackageBytes(id);
+    if (bytes > VISUAL_PACKAGE_LIMIT_BYTES) {
+      const error = visualPackageLimitMessage(MOTION_MODELS[id].label, bytes);
+      publish({ queue: rest, error });
+      showToast(error, 'error');
+      next(folder);
+      return;
+    }
+  }
   const aborter = new AbortController(); controller = aborter;
   publish({ active: id, queue: rest, error: '' });
   task = (async () => {
@@ -193,6 +208,10 @@ export const motionAssetsManager = {
   queue(folder: FileSystemDirectoryHandle, id: MotionAssetId) {
     if (state.folder && state.folder !== folder && task) throw new Error('A motion download is active in another workspace.');
     if (state.folder === folder && (state.active === id || state.queue.includes(id) || state.installed[id])) return;
+    if (id !== 'pose_engine' && id !== 'vector_engine') {
+      const bytes = motionPackageBytes(id);
+      if (bytes > VISUAL_PACKAGE_LIMIT_BYTES) throw new Error(visualPackageLimitMessage(MOTION_MODELS[id].label, bytes));
+    }
     publish({ folder, queue: [...(state.folder === folder ? state.queue : []), id], paused: state.folder === folder && state.paused });
     next(folder);
   },

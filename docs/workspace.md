@@ -63,7 +63,27 @@ harness/projects/<project-id>/library/
 harness/history/
 models/
 engines/
+sources/
+outputs/
+presets/
+exports/
 ```
+
+New connected folders start with `models/`, `sources/`, `outputs/`,
+`presets/`, and `exports/`. The first project is stored in
+`harness/projects/`. Reconnecting an older workspace fills in missing
+asset folders when write permission is already granted. A read-only
+reconnect opens without asking to create them.
+
+Images made by the chat `generate_image` tool stay in the active
+project's `library/generated/` folder. Image inspector runs save
+their PNGs under `outputs/images/`. Each PNG has a neighboring
+JSON file with its prompt, model, applied seed and settings, and
+the pinned hashes of browser model files when available. Remote
+providers do not expose a model file hash or an applied seed, so
+those fields remain empty rather than implying reproducibility.
+When camera-motion video starts from a prompt, its generated first
+frame and matching JSON record are saved under `sources/generated/`.
 
 Model profiles, the selected profile, and image generator settings travel with the workspace in `harness/settings.json`. API keys stay in browser memory and are cleared when switching workspaces. An existing browser profile setup is imported into the first workspace opened after this update. The model catalog, diagnostics, and engine downloads are inherited from the earlier Story Studio implementation. Its old data format and documentation are preserved in [legacy Story Studio documentation](legacy-story-studio.md); the new app does not silently convert or delete old story files.
 

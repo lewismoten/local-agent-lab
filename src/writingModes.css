@@ -26,3 +26,20 @@
 @media(max-width:720px){.writing-mode-panel{padding:10px 16px}.writing-mode-tabs button{padding:7px 9px}.mode-report-select{align-items:start;flex-direction:column}.mode-report-select select{max-width:100%}}
 
 .suggestion-list{display:flex;gap:8px;overflow-x:auto;padding-top:10px}.suggestion-card{background:#fff;border:1px solid #e0e8de;border-radius:7px;padding:11px;min-width:245px;max-width:310px}.suggestion-card strong{font-size:11px;color:#375c42}.suggestion-card p,.suggestion-card small{font-size:10px;line-height:1.4;color:#738475;display:block;margin:6px 0}.suggestion-card button{border:1px solid #cfded0;background:#eff6ed;color:#386a45;border-radius:5px;padding:5px 7px;font-size:10px;margin-right:5px}
+
+/* Keep the writing modes on the same dark surface as the rest of the workspace. */
+.writing-mode-panel { color: var(--ink); border-color: var(--line); background: linear-gradient(120deg, #11243a, #101a30 68%, #211b38); }
+.writing-mode-tabs button { color: #c4e8ed; border-color: #46667b; background: #172b40; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.writing-mode-tabs button:hover { transform: translateY(-1px); border-color: var(--cyan); box-shadow: 0 0 16px #6de8dc2b; }
+.writing-mode-tabs button.active { color: #071824; border-color: #a0fff0; background: linear-gradient(100deg, #81f5e6, #a9caff); box-shadow: 0 0 18px #6de8dc3b; }
+.mode-content, .mode-actions span, .ollama-model-list { color: var(--muted); }
+.mode-fields input, .mode-fields select, .mode-report-select select, .mode-issue input, .mode-issue select { color: var(--ink); border-color: var(--line); background: #0c1829; }
+.mode-report { color: var(--ink); border-color: var(--line); background: #111f33; }
+.mode-issue { border-color: var(--line-soft); }
+.mode-issue strong, .suggestion-card strong { color: var(--ink); }
+.mode-issue small, .suggestion-card p, .suggestion-card small { color: var(--muted); }
+.mode-issue button, .suggestion-card button { color: #a6f9ea; border-color: #477d88; background: #1a3546; }
+.mode-issue button:hover, .suggestion-card button:hover { border-color: #a6f9ea; background: #245163; }
+.suggestion-card { border-color: #476b7d; background: linear-gradient(145deg, #1a3046, #111f33); box-shadow: inset 0 1px #dffff01b; transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.suggestion-card:hover { transform: translateY(-2px); border-color: #88ebdf; box-shadow: 0 8px 24px #0005, 0 0 18px #72eee326; }
+@media (prefers-reduced-motion: reduce) { .writing-mode-tabs button, .suggestion-card { transition: none; } .writing-mode-tabs button:hover, .suggestion-card:hover { transform: none; } }

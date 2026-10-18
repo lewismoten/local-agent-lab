@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { assertMotionFiles, MOTION_MODELS } from './motionAssets.ts';
 import { saveDiagnosticJson } from './diagnosticReports.ts';
 import { detectImagePose, detectVideoPoses, poseOverlay, type PoseFrame } from './poseRuntime.ts';
-import { ensureWritableFolder, writeBlob } from './storage.ts';
+import { ensureWritableFolder } from './storage.ts';
+import { saveVisualArtifact } from './visualArtifactProvenance.ts';
 import { showToast } from './toastStore.ts';
+import { captureVisualTestEnvironment, type VisualTestEnvironment } from './visualTestEnvironment.ts';
+import { motionPackageProvenance, type VisualModelPackage } from './visualModelProvenance.ts';
 
 type Props = { folder: FileSystemDirectoryHandle | null; disabled?: boolean; openRequest?: { path: string; token: number } | null; onOpenRequestHandled?: () => void };
-type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed' | 'stopped'; detail: string; input?: { name: string; type: string; durationSeconds?: number }; frames: number; people: number; savedPath?: string; posePath?: string };
+type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed' | 'stopped'; detail: string; environment: VisualTestEnvironment; modelPackage?: VisualModelPackage; runtimePackage?: VisualModelPackage; inferenceBackend?: 'CPU/WASM'; input?: { name: string; type: string; durationSeconds?: number }; frames: number; people: number; savedPath?: string; posePath?: string };
 const path = MOTION_MODELS.pose.path;
 
 async function videoFromFile(file: File): Promise<{ video: HTMLVideoElement; url: string }> {
@@ -42,11 +45,13 @@ export default function PoseModelDiagnostics({ folder, disabled, openRequest, on
     if (!folder || !source || busy) return;
     const aborter = new AbortController(); controller.current = aborter;
     const checkedAt = new Date().toISOString();
-    const next: Report = { file: path, checkedAt, runtime: 'MediaPipe Vision 1.1.1', result: 'failed', detail: '', input: { name: source.name, type: source.type }, frames: 0, people: 0 };
+    const next: Report = { file: path, checkedAt, runtime: 'MediaPipe Vision 1.1.1', result: 'failed', detail: '', environment: captureVisualTestEnvironment(), input: { name: source.name, type: source.type }, frames: 0, people: 0 };
     setBusy(true); setError(''); setPreview(''); setStage('Checking files…');
     try {
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save poses in this workspace.');
       await Promise.all([assertMotionFiles(folder, 'pose'), assertMotionFiles(folder, 'pose_engine')]);
+      next.modelPackage = motionPackageProvenance('pose');
+      next.runtimePackage = motionPackageProvenance('pose_engine');
       let frames: PoseFrame[];
       if (source.type.startsWith('video/')) {
         const { video, url } = await videoFromFile(source);
@@ -65,11 +70,14 @@ export default function PoseModelDiagnostics({ folder, disabled, openRequest, on
         } finally { bitmap.close(); }
       } else throw new Error('Choose a photo or video file.');
       if (aborter.signal.aborted) throw aborter.signal.reason;
+      next.inferenceBackend = 'CPU/WASM';
       next.frames = frames.length;
       next.people = Math.max(0, ...frames.map(item => item.landmarks.length));
       const name = `pose-${checkedAt.replace(/[:.]/g, '-')}.json`;
       next.posePath = `media/poses/${name}`;
-      await writeBlob(folder, next.posePath, new Blob([JSON.stringify({ schemaVersion: 1, source: source.name, model: path, checkedAt, frames }, null, 2)], { type: 'application/json' }));
+      await saveVisualArtifact(folder, next.posePath, new Blob([JSON.stringify({ schemaVersion: 1, source: source.name, model: path, modelPackage: next.modelPackage, runtimePackage: next.runtimePackage, checkedAt, frames }, null, 2)], { type: 'application/json' }),
+        { kind: 'pose', generatedAt: checkedAt, modelPackage: next.modelPackage, runtimePackage: next.runtimePackage, modelRequired: true,
+          inferenceBackend: next.inferenceBackend, source: { name: source.name, origin: 'uploaded' }, settings: next.input });
       next.result = 'passed';
       next.detail = next.people ? `${frames.length} frame${frames.length === 1 ? '' : 's'} analyzed; up to ${next.people} person${next.people === 1 ? '' : 's'} found.` : 'No person was detected in the selected file.';
       showToast('Pose landmarks saved.');

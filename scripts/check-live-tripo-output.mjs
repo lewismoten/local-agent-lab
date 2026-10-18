@@ -116,6 +116,28 @@ try {
   })()`);
   assert.ok(assets.some(item => item.label === 'Download PLY' && item.bytes > 1000), 'PLY download should be available');
   assert.ok(assets.some(item => item.label === 'Download GLB' && item.bytes > 1000), 'GLB download should be available');
+  const provenance = await evaluate(`(async () => {
+    const folder = await (await import('/src/storage.ts')).browserFiles();
+    const { loadLatestDiagnosticJson } = await import('/src/diagnosticReports.ts');
+    const { readBlob } = await import('/src/storage.ts');
+    const report = await loadLatestDiagnosticJson(folder, 'models/TripoSR-Q8-ONNX', 'mesh');
+    const sidecars = await Promise.all([report.plyPath, report.glbPath].map(async path => {
+      const value = JSON.parse(await (await readBlob(folder, path + '.meta.json')).text());
+      return { artifactPath: value.artifactPath, modelPath: value.modelPackage?.path, runtimePath: value.runtimePackage?.path };
+    }));
+    return { result: report?.result, modelPath: report?.modelPackage?.path,
+      modelHashes: report?.modelPackage?.files?.map(file => file.sha256),
+      runtimePath: report?.runtimePackage?.path,
+      runtimeHashes: report?.runtimePackage?.files?.map(file => file.sha256),
+      paths: [report.plyPath, report.glbPath], sidecars };
+  })()`);
+  assert.ok(provenance.result === 'passed' && provenance.modelPath === 'models/TripoSR-Q8-ONNX'
+    && provenance.runtimePath === 'engines/ONNX-Image'
+    && provenance.modelHashes?.length >= 3 && provenance.runtimeHashes?.length >= 3
+    && [...provenance.modelHashes, ...provenance.runtimeHashes].every(hash => /^[a-f0-9]{64}$/.test(hash)),
+  `TripoSR package provenance is incomplete: ${JSON.stringify(provenance)}`);
+  assert.deepEqual(provenance.sidecars.map(item => item.artifactPath), provenance.paths);
+  assert.ok(provenance.sidecars.every(item => item.modelPath === provenance.modelPath && item.runtimePath === provenance.runtimePath));
   const layouts = [];
   for (const [width, height] of [[1440, 900], [390, 844]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 500 });
@@ -138,7 +160,7 @@ try {
     const screenshot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(`/tmp/rivers-tripo-output-${width}.png`, Buffer.from(screenshot.data, 'base64'));
   }
-  console.log(JSON.stringify({ result, assets, layouts }, null, 2));
+  console.log(JSON.stringify({ result, assets, provenance, layouts }, null, 2));
 } finally {
   if (snapshot && socket.readyState === WebSocket.OPEN) {
     try {

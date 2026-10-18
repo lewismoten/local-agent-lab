@@ -1,6 +1,6 @@
 // Model switches and inference share one queue. A second Web Lock stays held
 // while a model remains resident so another tab can ask it to free memory.
-type ResidentModel = { loaded: () => boolean; unload: () => Promise<void> };
+type ResidentModel = { loaded: () => boolean; unload: () => Promise<void>; idleMs?: number };
 const residents = new Map<string, ResidentModel>();
 const tabId = crypto.randomUUID();
 const residentLockName = 'local-agent-lab:resident-model';
@@ -12,14 +12,31 @@ let tail: Promise<void> = Promise.resolve();
 let residentRelease: (() => void) | null = null;
 let residentPending: Promise<void> | null = null;
 let activeOperations = 0;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function registerResidentModel(id: string, loaded: () => boolean, unload: () => Promise<void>) {
-  residents.set(id, { loaded, unload });
+export function registerResidentModel(id: string, loaded: () => boolean, unload: () => Promise<void>, idleMs?: number) {
+  residents.set(id, { loaded, unload, idleMs });
+}
+
+function clearIdleTimer() {
+  if (idleTimer !== null) clearTimeout(idleTimer);
+  idleTimer = null;
 }
 
 function releaseIfIdle() {
   if (activeOperations) return;
-  if ([...residents.values()].some(model => model.loaded())) return;
+  clearIdleTimer();
+  const loaded = [...residents.values()].filter(model => model.loaded());
+  if (loaded.length) {
+    const delay = Math.min(...loaded.map(model => model.idleMs ?? Infinity));
+    if (Number.isFinite(delay)) idleTimer = setTimeout(() => {
+      idleTimer = null;
+      void withLocalModelMemory(async () => {
+        for (const model of residents.values()) if (model.idleMs !== undefined && model.loaded()) await model.unload();
+      }, { claimResident: false }).catch(error => console.warn('Could not unload an idle browser model:', error));
+    }, delay);
+    return;
+  }
   const release = residentRelease;
   residentRelease = null;
   release?.();
@@ -61,7 +78,9 @@ channel?.addEventListener('message', event => {
 });
 
 export function withLocalModelMemory<T>(work: () => Promise<T>, options: { claimResident?: boolean } = {}): Promise<T> {
+  clearIdleTimer();
   const current: Promise<T> = tail.then(async () => {
+    clearIdleTimer();
     activeOperations++;
     try {
       if (options.claimResident !== false) await claimResidentLock();

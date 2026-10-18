@@ -19,10 +19,12 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     location.reload();
   };
   navigator.serviceWorker.addEventListener('controllerchange', reloadWhenControlled);
-  window.addEventListener('load', () => {
+  const installOffline = () => {
     void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}coi-serviceworker.js`, { scope: import.meta.env.BASE_URL })
       .then(() => navigator.serviceWorker.ready)
       .then(reloadWhenControlled)
       .catch(error => console.warn('Offline app setup failed:', error));
-  }, { once: true });
+  };
+  if (document.readyState === 'complete') installOffline();
+  else window.addEventListener('load', installOffline, { once: true });
 }

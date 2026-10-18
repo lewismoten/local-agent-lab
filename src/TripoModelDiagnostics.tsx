@@ -2,12 +2,16 @@ import { lazy, Suspense, useEffect, useRef, useState, type PointerEvent as React
 import { CircleHelp } from 'lucide-react';
 import { MOTION_MODELS } from './motionAssets.ts';
 import { saveDiagnosticJson } from './diagnosticReports.ts';
-import { ensureWritableFolder, writeBlob } from './storage.ts';
+import { captureVisualTestEnvironment, type VisualTestEnvironment } from './visualTestEnvironment.ts';
+import { visualRuntimeFailureMessage } from './visualRuntimeFailure.ts';
+import { ensureWritableFolder } from './storage.ts';
+import { saveVisualArtifact } from './visualArtifactProvenance.ts';
 import { showToast } from './toastStore.ts';
 import { meshPreview, reconstructTripo, renderTripoInput, type TripoBackgroundMode, type TripoClipPoint, type TripoMesh } from './tripoRuntime.ts';
+import { motionPackageProvenance, onnxImageEngineProvenance, type VisualModelPackage } from './visualModelProvenance.ts';
 
 type Props = { folder: FileSystemDirectoryHandle | null; disabled?: boolean; openRequest?: { path: string; token: number } | null; onOpenRequestHandled?: () => void };
-type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed' | 'stopped'; detail: string; input?: { name: string; resolution: number; densityThreshold: number; marginPercent: number; backgroundMode: TripoBackgroundMode; backgroundTolerance?: number; clipPolygon?: TripoClipPoint[] }; triangles?: number; plyPath?: string; glbPath?: string; savedPath?: string };
+type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed' | 'stopped'; detail: string; environment: VisualTestEnvironment; modelPackage?: VisualModelPackage; runtimePackage?: VisualModelPackage; inferenceBackend?: 'WebGPU primary; decoder may use WASM'; input?: { name: string; resolution: number; densityThreshold: number; marginPercent: number; backgroundMode: TripoBackgroundMode; backgroundTolerance?: number; clipPolygon?: TripoClipPoint[] }; triangles?: number; plyPath?: string; glbPath?: string; savedPath?: string };
 const path = MOTION_MODELS.tripo.path;
 const TripoMeshViewer = lazy(() => import('./TripoMeshViewer.tsx'));
 const startingOutline = (): TripoClipPoint[] => [{ x: 0.04, y: 0.04 }, { x: 0.96, y: 0.04 }, { x: 0.96, y: 0.96 }, { x: 0.04, y: 0.96 }];
@@ -125,15 +129,20 @@ export default function TripoModelDiagnostics({ folder, disabled, openRequest, o
     const aborter = new AbortController(); controller.current = aborter;
     const checkedAt = new Date().toISOString();
     const outline = clipEnabled ? clipPoints.map(point => ({ x: point.x, y: point.y })) : undefined;
-    const next: Report = { file: path, checkedAt, runtime: 'TripoSR Q8 · ONNX WebGPU', result: 'failed', detail: '', input: { name: source.name, resolution, densityThreshold: threshold, marginPercent: paddingPercent, backgroundMode, ...(backgroundMode === 'auto' ? { backgroundTolerance } : {}), ...(outline ? { clipPolygon: outline } : {}) } };
+    const next: Report = { file: path, checkedAt, runtime: 'TripoSR Q8 · ONNX WebGPU', result: 'failed', detail: '', environment: captureVisualTestEnvironment(), input: { name: source.name, resolution, densityThreshold: threshold, marginPercent: paddingPercent, backgroundMode, ...(backgroundMode === 'auto' ? { backgroundTolerance } : {}), ...(outline ? { clipPolygon: outline } : {}) } };
     setBusy(true); setError(''); setPreview(''); setMesh(null); setPlyUrl(''); setGlbUrl(''); setGlbPath(''); setOpenedPlyName(''); setProgress(null); setStage('Checking files…');
     try {
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the mesh in this workspace.');
       const mesh = await reconstructTripo(folder, source, resolution, threshold, aborter.signal, (message, current, total) => { setStage(message); setProgress(current !== undefined && total !== undefined ? { current, total } : null); }, paddingPercent, outline, backgroundMode, backgroundTolerance);
+      next.modelPackage = motionPackageProvenance('tripo');
+      next.runtimePackage = onnxImageEngineProvenance();
+      next.inferenceBackend = 'WebGPU primary; decoder may use WASM';
       if (aborter.signal.aborted) throw aborter.signal.reason;
       next.triangles = mesh.triangles;
       next.plyPath = `media/meshes/triposr-${checkedAt.replace(/[:.]/g, '-')}.ply`;
-      await writeBlob(folder, next.plyPath, mesh.ply);
+      await saveVisualArtifact(folder, next.plyPath, mesh.ply,
+        { kind: 'mesh', generatedAt: checkedAt, modelPackage: next.modelPackage, runtimePackage: next.runtimePackage, modelRequired: true,
+          inferenceBackend: next.inferenceBackend, source: { name: source.name, origin: 'uploaded' }, settings: next.input });
       setPlyUrl(URL.createObjectURL(mesh.ply)); setPreview(meshPreview(mesh)); setMesh(mesh);
       next.result = 'passed'; next.detail = `Saved a colored mesh with ${mesh.triangles.toLocaleString()} triangles.`;
       try {
@@ -141,7 +150,9 @@ export default function TripoModelDiagnostics({ folder, disabled, openRequest, o
         const { exportTripoGlb } = await import('./tripoThree.ts');
         const glb = await exportTripoGlb(mesh);
         next.glbPath = `media/meshes/triposr-${checkedAt.replace(/[:.]/g, '-')}.glb`;
-        await writeBlob(folder, next.glbPath, glb);
+        await saveVisualArtifact(folder, next.glbPath, glb,
+          { kind: 'mesh', generatedAt: checkedAt, modelPackage: next.modelPackage, runtimePackage: next.runtimePackage, modelRequired: true,
+            inferenceBackend: next.inferenceBackend, source: { name: source.name, origin: 'uploaded' }, settings: next.input });
         setGlbUrl(URL.createObjectURL(glb)); setGlbPath(next.glbPath);
       } catch (cause) {
         next.glbPath = undefined;
@@ -150,7 +161,7 @@ export default function TripoModelDiagnostics({ folder, disabled, openRequest, o
       showToast('3D mesh saved.');
     } catch (cause) {
       next.result = aborter.signal.aborted ? 'stopped' : 'failed';
-      next.detail = aborter.signal.aborted ? 'Stopped by user.' : cause instanceof Error ? cause.message : String(cause);
+      next.detail = aborter.signal.aborted ? 'Stopped by user.' : visualRuntimeFailureMessage(cause);
       if (!aborter.signal.aborted) setError(next.detail);
     } finally {
       try { next.savedPath = await saveDiagnosticJson(folder, path, checkedAt, 'mesh', next); }
@@ -177,9 +188,14 @@ export default function TripoModelDiagnostics({ folder, disabled, openRequest, o
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the GLB in this workspace.');
       const { exportTripoGlb } = await import('./tripoThree.ts');
       const glb = await exportTripoGlb(mesh);
-      const name = (openedPlyName || report?.plyPath?.split('/').at(-1) || `triposr-${Date.now()}.ply`).replace(/\.ply$/i, '.glb');
-      const savedPath = `media/meshes/${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      await writeBlob(folder, savedPath, glb);
+      const stem = (openedPlyName || report?.plyPath?.split('/').at(-1) || `triposr-${Date.now()}.ply`).replace(/\.ply$/i, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const savedPath = `media/meshes/${stem}-${crypto.randomUUID()}.glb`;
+      await saveVisualArtifact(folder, savedPath, glb,
+        { kind: report ? 'mesh' : 'mesh-conversion', generatedAt: new Date().toISOString(), modelPackage: report?.modelPackage,
+          runtimePackage: report?.runtimePackage, modelRequired: !!report?.modelPackage,
+          inferenceBackend: report?.inferenceBackend,
+          source: { name: openedPlyName || report?.plyPath || 'Current mesh', origin: openedPlyName ? 'imported-ply' : 'generated' },
+          settings: report?.input });
       setGlbPath(savedPath); setGlbUrl(URL.createObjectURL(glb));
       showToast('GLB saved.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }

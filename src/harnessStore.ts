@@ -1,4 +1,4 @@
-import { readBlob, removeBlob, writeBlob } from './storage.ts';
+import { hasWritableFolderPermission, readBlob, removeBlob, writeBlob } from './storage.ts';
 import { createAvatarAsset, validAvatarLibrary, type AvatarAsset, type AvatarAssetInput } from './harnessAvatarLibrary.ts';
 import { emptySurfaceArtwork, validSurfaceArtwork, validSurfaceArtworkKey, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
 import { searchableMessageText } from './harnessCompaction.ts';
@@ -1048,6 +1048,22 @@ export async function openFolderWorkspace(folder: FileSystemDirectoryHandle): Pr
   catch (error) { if (!isMissing(error)) throw error; }
   if (found && !supportedManifest(manifest)) {
     throw new Error('This workspace manifest has an unsupported format. The existing file was left untouched.');
+  }
+  if (!manifest || await hasWritableFolderPermission(folder)) {
+    // Reconnects can fill in older workspace layouts when write permission is
+    // already granted. A permission prompt is never needed just to open one.
+    for (const name of ['models', 'sources', 'outputs', 'presets', 'exports']) {
+      try { await folder.getDirectoryHandle(name); continue; }
+      catch (error) { if (!isMissing(error)) throw error; }
+      try { await folder.getDirectoryHandle(name, { create: true }); }
+      catch (error) {
+        // Some handles have no queryPermission method. Let a read-only older
+        // workspace open even when create:true is rejected by that provider.
+        if (manifest && error instanceof DOMException
+          && ['NotAllowedError', 'NoModificationAllowedError', 'SecurityError'].includes(error.name)) break;
+        throw error;
+      }
+    }
   }
   const id = manifest ? manifest.id : newId();
   const store = new HarnessStore(id, folder);

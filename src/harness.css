@@ -171,6 +171,9 @@
 .harness-generated-image { display:block; width:min(100%,360px); max-height:360px; object-fit:contain; margin-top:11px; border:1px solid var(--h-line); border-radius:8px; background:#0a1727; }
 .harness-generated-figure { width:min(100%,360px); margin:0; }
 .harness-generated-figure figcaption { margin-top:5px; color:var(--h-muted); font-size:10px; overflow-wrap:anywhere; }
+.harness-generated-missing { margin-top:6px; color:#ffd59f; font-size:11px; }
+.harness-generated-missing summary { cursor:pointer; }
+.harness-generated-missing ul { margin:5px 0 0; padding-left:18px; overflow-wrap:anywhere; }
 .harness-generating { display:flex; align-items:center; gap:8px; max-width:850px; margin:auto; color:var(--h-cyan); font-size:12px; }
 .harness-pulse { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--h-cyan); box-shadow:0 0 12px var(--h-cyan); animation:harness-pulse 1.2s infinite; }
 .harness-compose { padding:13px max(28px,calc((100% - 850px)/2)) 16px; border-top:1px solid var(--h-line); background:#0b1829e8; }

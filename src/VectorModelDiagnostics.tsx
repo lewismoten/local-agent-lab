@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { MOTION_MODELS } from './motionAssets.ts';
 import { saveDiagnosticJson } from './diagnosticReports.ts';
-import { ensureWritableFolder, writeBlob } from './storage.ts';
+import { ensureWritableFolder } from './storage.ts';
+import { saveVisualArtifact } from './visualArtifactProvenance.ts';
 import { showToast } from './toastStore.ts';
 import { vectorizeImage } from './vectorRuntime.ts';
+import { captureVisualTestEnvironment, type VisualTestEnvironment } from './visualTestEnvironment.ts';
+import { motionPackageProvenance, type VisualModelPackage } from './visualModelProvenance.ts';
 
 type Props = { folder: FileSystemDirectoryHandle | null; disabled?: boolean; openRequest?: { path: string; token: number } | null; onOpenRequestHandled?: () => void };
-type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed'; detail: string; input?: { name: string; preset: string; maxColors: number }; size?: { width: number; height: number; svgBytes: number }; svgPath?: string; savedPath?: string };
+type Report = { file: string; checkedAt: string; runtime: string; result: 'passed' | 'failed'; detail: string; environment: VisualTestEnvironment; modelPackage?: VisualModelPackage; runtimePackage?: VisualModelPackage; inferenceBackend?: 'WASM'; input?: { name: string; preset: string; maxColors: number }; size?: { width: number; height: number; svgBytes: number }; svgPath?: string; savedPath?: string };
 const path = MOTION_MODELS.vector.path;
 
 export default function VectorModelDiagnostics({ folder, disabled, openRequest, onOpenRequestHandled }: Props) {
@@ -28,15 +31,20 @@ export default function VectorModelDiagnostics({ folder, disabled, openRequest, 
   async function run() {
     if (!folder || !source || busy) return;
     const checkedAt = new Date().toISOString();
-    const next: Report = { file: path, checkedAt, runtime: 'VTracer WebAssembly 1.0.0-alpha.4', result: 'failed', detail: '', input: { name: source.name, preset, maxColors } };
+    const next: Report = { file: path, checkedAt, runtime: 'VTracer WebAssembly 1.0.0-alpha.4', result: 'failed', detail: '', environment: captureVisualTestEnvironment(), input: { name: source.name, preset, maxColors } };
     setBusy(true); setError('');
     try {
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save vectors in this workspace.');
       const { svg, width, height } = await vectorizeImage(folder, source, preset, maxColors);
+      next.modelPackage = motionPackageProvenance('vector');
+      next.runtimePackage = motionPackageProvenance('vector_engine');
+      next.inferenceBackend = 'WASM';
       const blob = new Blob([svg], { type: 'image/svg+xml' });
       next.size = { width, height, svgBytes: blob.size };
       next.svgPath = `media/vectors/vector-${checkedAt.replace(/[:.]/g, '-')}.svg`;
-      await writeBlob(folder, next.svgPath, blob);
+      await saveVisualArtifact(folder, next.svgPath, blob,
+        { kind: 'vector', generatedAt: checkedAt, modelPackage: next.modelPackage, runtimePackage: next.runtimePackage, modelRequired: true,
+          inferenceBackend: next.inferenceBackend, source: { name: source.name, origin: 'uploaded' }, settings: next.input });
       setPreview(URL.createObjectURL(blob));
       next.result = 'passed'; next.detail = `Created a ${width} × ${height} SVG. Review the paths and colors in the preview.`;
       showToast('Vector SVG saved.');

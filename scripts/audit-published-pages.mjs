@@ -29,7 +29,7 @@ for (const match of html.matchAll(/(?:src|href)="(\/[^"?#]+)"/g)) {
 }
 const index = await indexResponse.json();
 const notices = await noticesResponse.text();
-if (index.version !== 1 || !Array.isArray(index.packages) || !index.packages.length) throw new Error('Published package notices are missing.');
+if (![1, 2].includes(index.version) || !Array.isArray(index.packages) || !index.packages.length) throw new Error('Published package notices are missing.');
 for (const entry of index.packages) {
   if (!entry.name || !entry.version || !entry.license || !entry.notices?.length || entry.notices.some(notice => !notice.text?.trim()) || !notices.includes(`${entry.name}@${entry.version}`)) throw new Error(`Published notice is incomplete for ${entry.name || 'an unnamed package'}.`);
 }

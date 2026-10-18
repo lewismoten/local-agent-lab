@@ -44,6 +44,10 @@ self.addEventListener('fetch', event => {
     if (request.mode === 'navigate') {
       try { return withIsolation(await fetch(request)); }
       catch (error) {
+        if (assetUrls.has(url.href)) {
+          const requested = await (await caches.open(CACHE_NAME)).match(url.href);
+          if (requested) return withIsolation(requested);
+        }
         const cached = await (await caches.open(CACHE_NAME)).match(shellUrl);
         if (cached) return withIsolation(cached);
         throw error;
