@@ -21,4 +21,4 @@ GITHUB_PAGES=true npm run build
 GITHUB_PAGES=true npm run preview
 ```
 
-Preview a Pages build with `GITHUB_PAGES=true` for both commands so its `/rivers-of-memory/` assets resolve. Open the preview URL once online, wait for the service worker to control the page, then switch the browser offline and reload. The Models screen should still open from the cached app shell.
+Preview a Pages build with `GITHUB_PAGES=true` for both commands so its `/local-agent-lab/` assets resolve. Open the preview URL once online, wait for the service worker to control the page, then switch the browser offline and reload. The Models screen should still open from the cached app shell.

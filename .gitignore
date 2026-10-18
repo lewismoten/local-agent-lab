@@ -17,5 +17,5 @@ models/
 *.gguf
 /public/**/*-test
 /public/**/*-test.*
-/notes/
-!/notes/checklist.md
+/notes/*
+/notes/checklist.md

@@ -31,7 +31,8 @@ test('Ollama stream joins split NDJSON and reports only visible text', async () 
     assert.equal(result.message.content, 'Hello world');
     assert.equal(result.message.thinking, 'I am thinking');
     assert.equal(result.eval_count, 3);
-    assert.deepEqual(progress.map(item => item.visibleText), ['Hello', 'Hello world', 'Hello world']);
+    assert.deepEqual(progress.map(item => item.visibleText), ['', 'Hello', 'Hello world', 'Hello world']);
+    assert.equal(progress[0].reasoningText, 'I am thinking');
     assert.equal(progress.at(-1).outputTokens, 3);
   } finally { globalThis.fetch = oldFetch; }
 });

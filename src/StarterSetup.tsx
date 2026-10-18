@@ -96,7 +96,7 @@ export default function StarterSetup({ folder, onConnectFolder, onLoad }: {
 
   return <section className="harness-starter" aria-label="Offline starter model">
     <div className="harness-starter-mark"><Sparkles size={20}/></div>
-    <div className="harness-starter-copy"><span className="harness-overline">START OFFLINE</span><h2>Qwen3 1.7B</h2><p>Browser-tested chat, tools, and thinking · 1.28 GB · Apache 2.0</p>
+    <div className="harness-starter-copy"><span className="harness-overline">START OFFLINE</span><h2>Qwen3 1.7B</h2><p>Browser-tested chat, tools, and thinking · 1.28 GB · Apache 2.0</p><p>Keep the model and your work on a USB drive to use them on another compatible computer.</p>
       <div className="harness-starter-steps"><span className={folder ? 'done' : ''}>1 Storage</span><span className={engineChecked && engine.installed ? 'done' : ''}>2 Engine</span><span className={checked && modelPresent && licensed ? 'done' : ''}>3 Model</span><span>4 Load</span></div>
       {(engine.status === 'downloading' || engine.status === 'paused' && engine.bytes > 0) && !engine.installed && <div className="harness-starter-progress" role="status"><span>Engine · {enginePercent}%</span><progress value={engine.bytes} max={engine.total}/></div>}
       {(activeDownload || queued && modelBytes > 0) && <div className="harness-starter-progress" role="status"><span>Model · {modelPercent}%</span><progress value={modelBytes} max={starter.bytes}/></div>}

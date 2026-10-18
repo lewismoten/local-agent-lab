@@ -1,4 +1,4 @@
-import { complete, type AIConfig, type ChatTurn, type Completion, type LiveCompletionProgress } from './ai.ts';
+import { complete, type AIConfig, type ChatTurn, type Completion, type InferenceRound, type LiveCompletionProgress } from './ai.ts';
 import { isBrowserModelLoadedFrom, loadBrowserModel, unloadBrowserModel, type BrowserTools } from './browserModel.ts';
 import { browserThinkingBudget } from './browserThinking.ts';
 import { browserContextWindow } from './browserContext.ts';
@@ -19,6 +19,7 @@ import { unsupportedToolDiagnostic } from './harnessToolDiagnostics.ts';
 import { filterPermittedTools } from './harnessToolPermissions.ts';
 import { authorizeToolCall, type ToolApprovalRequest } from './harnessToolApprovals.ts';
 import { discoverToolCategory, initialDiscoverableTools, requestToolsTool } from './harnessToolDiscovery.ts';
+import { snapshotInference } from './inferenceTrace.ts';
 
 export const imageTool: ChatCompletionTool = {
   type: 'function',
@@ -28,7 +29,7 @@ export const imageTool: ChatCompletionTool = {
   },
 };
 
-type HarnessCompletion = Completion & { usedConfig: AIConfig; fallbackNotice?: string };
+type HarnessCompletion = Completion & { usedConfig: AIConfig; submittedPrompt: { system: string; turns: ChatTurn[] }; fallbackNotice?: string };
 /** A model failed after a tool may have changed workspace files. Never replay automatically. */
 export class HarnessPartialToolError extends Error {
   constructor(message: string, readonly usedConfig: AIConfig, readonly completedChanges: string[]) {
@@ -115,7 +116,7 @@ export async function harnessComplete(args: HarnessCompletionArgs): Promise<Harn
       if (args.signal?.aborted) throw args.signal.reason || new DOMException('Cancelled.', 'AbortError');
       const result = await runHarnessCompletion({ ...args, config, system: fitted.system, turns: fitted.turns }, toolPlan);
       const fallbackNotice = failures.length ? `Used ${config.label} after ${candidates.slice(0, index).map(item => item.label).join(', ')} could not answer.` : undefined;
-      return { ...result, usedConfig: config, ...(fallbackNotice ? { fallbackNotice, toolEvents: [...(result.toolEvents || []), `Model fallback: ${failures.join(' | ')}`] } : {}) };
+      return { ...result, usedConfig: config, submittedPrompt: { system: fitted.system, turns: fitted.turns }, ...(fallbackNotice ? { fallbackNotice, toolEvents: [...(result.toolEvents || []), `Model fallback: ${failures.join(' | ')}`] } : {}) };
     } catch (error) {
       if (args.signal?.aborted) throw error;
       failures.push(`${config.label}: ${error instanceof Error ? error.message : String(error)}`);
@@ -185,28 +186,35 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
   } : undefined;
   const turns = [...args.turns];
   const toolEvents: string[] = [];
+  const thinkingSegments: string[] = [];
+  const rounds: InferenceRound[] = [];
   let inputTokens = 0, outputTokens = 0;
   try {
     for (let round = 0; round < 3; round++) {
       const result = await complete(config, turns, system, signal, tools, args.onTokenProgress);
+      rounds.push(...(result.rounds || [{ request: { system, turns: snapshotInference(turns), maxOutputTokens: config.maxOutputTokens }, response: {
+        text: result.text, thinking: result.thinkingText, inputTokens: result.inputTokens, outputTokens: result.outputTokens,
+      } }]));
       inputTokens += result.inputTokens || 0; outputTokens += result.outputTokens || 0;
+      if (result.thinkingText?.trim()) thinkingSegments.push(result.thinkingText.trim());
       toolEvents.push(...(result.toolEvents || []));
       toolEvents.push(...memoryDrafts.splice(0));
       const pseudo = pseudoShellCommand(result.text);
       if (pseudo !== null) {
         if (!pseudo || !tools || !offered.has('shell_readonly')) {
           toolEvents.push(unsupportedToolDiagnostic('shell_readonly', { output: result.text }));
-          return { ...result, text: 'The model requested a shell command that this project cannot run. Ask for a project file listing or a specific file instead.', inputTokens, outputTokens, toolEvents };
+          return { ...result, text: 'The model requested a shell command that this project cannot run. Ask for a project file listing or a specific file instead.', inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, rounds };
         }
         const shellResult = await tools.execute('shell_readonly', { command: pseudo }).catch(error => `Tool error: ${error instanceof Error ? error.message : String(error)}`);
         toolEvents.push(`shell_readonly: ${shellResult}`);
-        if (round === 2) return { ...result, text: shellResult, inputTokens, outputTokens, toolEvents };
+        (rounds.at(-1)!.toolResults ||= []).push({ name: 'shell_readonly', content: shellResult });
+        if (round === 2) return { ...result, text: shellResult, inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, rounds };
         turns.push({ role: 'assistant', content: `Requested read-only project shell command: ${pseudo}` });
         turns.push({ role: 'user', content: `Tool result:\n${shellResult}\nContinue the original task. Do not repeat the command unless more data is needed.` });
         continue;
       }
       const calls = result.deferredToolCalls || [];
-      if (!calls.length) return { ...result, inputTokens, outputTokens, toolEvents };
+      if (!calls.length) return { ...result, inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, rounds };
       if (!folder || !offered.has('generate_image') || round === 2) throw new Error('The image tool limit was reached. Try one image at a time.');
       for (const call of calls) {
         if (call.name !== 'generate_image') throw new Error(`Unsupported deferred tool: ${call.name}`);
@@ -240,6 +248,7 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
         completedChanges.push(`generate_image: ${message}`);
         await writeBlob(folder, path.replace(/\.png$/, '.json'), new Blob([JSON.stringify({ prompt, generatedAt: new Date().toISOString(), imageModel: used.model, imageProvider: used.provider, imagePreset: used.preset }, null, 2)], { type: 'application/json' }));
         toolEvents.push(`generate_image: ${message}`);
+        (rounds.at(-1)!.toolResults ||= []).push({ name: 'generate_image', content: message });
         turns.push({ role: 'assistant', content: result.text || `Requested the generate_image tool for: ${prompt}` });
         turns.push({ role: 'user', content: `Tool result: ${message} Continue the original task. Mention the saved path.` });
         onProgress?.('Continuing with the text model…');

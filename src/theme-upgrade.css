@@ -129,6 +129,9 @@
   box-shadow: 0 0 0 1px #92f8ea4d, 0 0 20px #79f5e630;
 }
 .harness-message.user .harness-message-avatar { box-shadow: 0 0 0 1px #c4a7ff6b, 0 0 20px #a991ff29; }
+.harness-message-inspect { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #4a7789; border-radius: 6px; color: #bdf8ee; background: #173448; font-size: 10px; }
+.harness-message-inspect:hover { border-color: #83f5e5; background: #205064; }
+.harness-message-meta .harness-message-inspect span { padding: 0; color: inherit; background: none; }
 .harness-memory-proposal {
   display: inline-flex;
   align-items: center;
@@ -145,8 +148,55 @@
   text-align: left;
 }
 .harness-memory-proposal:hover { border-color: #a0ffed; background: #28595b; }
+.harness-dialog.harness-response-dialog { width: min(880px, calc(100vw - 28px)); max-height: min(88dvh, 900px); overflow: auto; }
+.harness-response-report-head, .harness-response-report-head > div:last-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.harness-response-report-head { margin-bottom: 14px; }
+.harness-response-report-head h2 { margin: 2px 0; }
+.harness-response-report-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.harness-response-report-stats span { padding: 8px 10px; border: 1px solid #52788c; border-radius: 6px; color: var(--h-muted); background: #12273a; font-size: 11px; }
+.harness-response-report-stats strong { display: block; color: var(--h-text); font: 700 13px ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
+.harness-response-report section { margin: 13px 0; padding: 12px; border: 1px solid #45677e; border-radius: 8px; background: #0c1b2e; }
+.harness-response-report section h3 { margin: 0 0 8px; color: #9ff5e7; font-size: 13px; }
+.harness-response-report pre { max-height: 260px; margin: 0; padding: 10px; overflow: auto; border: 1px solid #304c64; border-radius: 5px; color: #dcecf6; background: #071422; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.55 ui-monospace, SFMono-Regular, monospace; }
+.harness-response-report-turns { display: grid; gap: 9px; max-height: 350px; overflow: auto; }
+.harness-response-report-turns strong { display: block; margin-bottom: 4px; color: #beaaff; font-size: 11px; text-transform: uppercase; }
+.harness-response-round { padding: 10px 0; border-top: 1px solid #35556a; }
+.harness-response-round:first-of-type { border-top: 0; }
+.harness-response-round h4 { margin: 0 0 8px; color: #dffbf4; font-size: 12px; }
+.harness-response-round > strong { display: block; margin: 9px 0 4px; color: #beaaff; font-size: 11px; }
+.harness-response-report small { display: block; margin-top: 7px; color: var(--h-muted); }
+.harness-response-report-markdown { max-height: 380px; overflow: auto; color: var(--h-text); overflow-wrap: anywhere; }
+.harness-response-report-markdown > :last-child { margin-bottom: 0; }
+.harness-response-report-error { color: #ffb9c8; }
+.harness-live-thinking { max-width: 850px; margin: 0 auto 12px; border: 1px solid #67578e; border-radius: 8px; color: #dacdff; background: #191a35d9; }
+.harness-live-thinking summary { display: flex; align-items: center; gap: 7px; padding: 7px 10px; cursor: pointer; font-size: 11px; font-weight: 700; }
+.harness-live-thinking[open] summary { border-bottom: 1px solid #67578e; }
+.harness-live-thinking > div { max-height: 220px; padding: 10px 12px; overflow: auto; font-size: 12px; overflow-wrap: anywhere; }
+.harness-live-thinking > div > :last-child { margin-bottom: 0; }
 .harness-compose-box:focus-within { box-shadow: inset 0 1px #e2fff01d, 0 0 0 2px #79f5e631, 0 10px 28px #0009; }
 
+/* Keep the working tools as polished as the surrounding navigation. */
+.harness-git-heading > div:first-child { display: grid; gap: 5px; min-width: 0; }
+.harness-git-heading h2 { line-height: 1.3; }
+.harness-git-panel {
+  background-image:
+    radial-gradient(circle at 100% 0, #78f5e514, transparent 38%),
+    linear-gradient(135deg, #182d43, #101d30 75%);
+}
+.harness-file-editor:focus-within {
+  border-color: #87f5e7;
+  box-shadow: inset 0 1px #d8fff026, 0 0 0 1px #87f5e747, 0 0 26px #69ecd91a;
+}
+.harness-file-list button svg,
+.harness-file-toolbar button svg,
+.harness-git-heading h2 svg {
+  transition: transform .2s ease, filter .2s ease;
+}
+.harness-file-list button:hover svg,
+.harness-file-toolbar button:hover svg,
+.harness-git-panel:hover .harness-git-heading h2 svg {
+  filter: drop-shadow(0 0 7px currentColor);
+}
 .harness :is(.browser-model-tabs, .diagnostic-tabs) button.active {
   color: #e8fffb;
   text-shadow: 0 0 10px #79f5e660;
@@ -170,6 +220,8 @@ dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diag
   .harness-atmosphere-glyphs { animation: cyber-glyph-breathe 8s ease-in-out infinite alternate; }
   .harness-atmosphere-horizon { animation: cyber-horizon-breathe 10s ease-in-out infinite alternate; }
   .harness-nav button.active svg { animation: cyber-nav-glow 4s ease-in-out infinite; }
+  .harness-file-list button:hover svg,
+  .harness-file-toolbar button:hover svg { transform: translateY(-1px) scale(1.08); }
 }
 @keyframes cyber-signal { to { transform: scaleY(.35); opacity: .5; } }
 @keyframes cyber-glyph-breathe { to { opacity: .3; } }
@@ -180,6 +232,8 @@ dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diag
   .harness-atmosphere { opacity: .22; width: 70vw; right: -18vw; }
   .harness-atmosphere-horizon, .harness-atmosphere-glyphs { display: none; }
   .harness-sidebar-signal { height: 27px; margin-bottom: 2px; }
+  .harness-response-report-head { align-items: flex-start; flex-direction: column; }
+  .harness-response-report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

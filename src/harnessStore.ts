@@ -1,6 +1,7 @@
 import { readBlob, writeBlob } from './storage.ts';
 import { searchableMessageText } from './harnessCompaction.ts';
 import { cleanWorkspaceSettings, workspaceSettings, type WorkspaceSettings } from './harnessSettings.ts';
+import type { ResponseDiagnostic } from './harnessResponseDiagnostics.ts';
 import {
   MESSAGE_CHUNK_SIZE, addSearchBits, chunkSearchBits, chunkSearchIndexNeedsUpgrade, createManifest, createSearchTermProbe, defaultIdentities, isoNow, newId,
   type ConversationMeta, type HarnessManifest, type HarnessMessage, type HarnessProject, type MemoryRecord,
@@ -16,6 +17,7 @@ const editorDraftPath = (projectId: string, area: 'files' | 'library') => `${ROO
 export type FileEditorDraft = { path: string; text: string; basePath: string; baseText: string };
 export const emptyFileEditorDraft = (): FileEditorDraft => ({ path: '', text: '', basePath: '', baseText: '' });
 const chunkPath = (projectId: string, sessionId: string, chunk: number) => `${ROOT}/projects/${projectId}/sessions/${sessionId}/chunks/${String(chunk).padStart(6, '0')}.json`;
+const diagnosticPath = (projectId: string, sessionId: string, messageId: string) => `${ROOT}/projects/${projectId}/sessions/${sessionId}/diagnostics/${messageId}.json`;
 const INDEX_GROUP_SIZE = 64;
 const chunkIndexPath = (projectId: string, sessionId: string, group: number) => `${ROOT}/projects/${projectId}/sessions/${sessionId}/search/${String(group).padStart(6, '0')}.json`;
 type ChunkIndex = { version: 1; chunks: string[] };
@@ -434,6 +436,17 @@ export class HarnessStore {
     return task;
   }
   async saveMemory(records: MemoryRecord[]): Promise<void> { await this.updateMemory(() => records); }
+  async saveResponseDiagnostic(projectId: string, sessionId: string, messageId: string, report: ResponseDiagnostic): Promise<void> {
+    validId(projectId); validId(sessionId); validId(messageId);
+    if ((report.version !== 1 && report.version !== 2) || new Blob([JSON.stringify(report)]).size > 16_000_000) throw new Error('Response diagnostic exceeds the 16 MB limit.');
+    await this.write(diagnosticPath(projectId, sessionId, messageId), report);
+  }
+  async responseDiagnostic(projectId: string, sessionId: string, messageId: string): Promise<ResponseDiagnostic | null> {
+    validId(projectId); validId(sessionId); validId(messageId);
+    const report = await this.read<ResponseDiagnostic>(diagnosticPath(projectId, sessionId, messageId));
+    if (report && report.version !== 1 && report.version !== 2) throw new Error('This response diagnostic uses an unsupported format.');
+    return report;
+  }
   private async removeIncompleteCopy(projectId: string, sessionId: string): Promise<void> {
     const root = `${ROOT}/projects/${projectId}`;
     if (this.folder) {
@@ -468,6 +481,17 @@ export class HarnessStore {
         const newPath = chunkPath(destinationProjectId, copied.id, number);
         if (this.folder) await writeBlob(this.folder, newPath, await readBlob(this.folder, oldPath));
         else await this.write(newPath, await this.chunk(source.projectId, source.id, number));
+        for (const message of await this.chunk(source.projectId, source.id, number)) {
+          if (!message.hasDiagnostics) continue;
+          const oldDiagnostic = diagnosticPath(source.projectId, source.id, message.id);
+          const newDiagnostic = diagnosticPath(destinationProjectId, copied.id, message.id);
+          if (this.folder) await writeBlob(this.folder, newDiagnostic, await readBlob(this.folder, oldDiagnostic));
+          else {
+            const report = await this.read<ResponseDiagnostic>(oldDiagnostic);
+            if (!report) throw new Error(`Response diagnostic for ${message.id} is missing.`);
+            await this.write(newDiagnostic, report);
+          }
+        }
         await onProgress?.(number + 1, total);
       }
       for (let group = 0; group * INDEX_GROUP_SIZE < total; group++) {

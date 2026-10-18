@@ -1,12 +1,12 @@
 import type { ChatCompletionMessage, ChatCompletionResponse, ChatCompletionTool, Wllama } from './browserEngineTypes';
-import type { AIConfig, ChatTurn, Completion, LiveCompletionProgress } from './ai';
+import type { AIConfig, ChatTurn, Completion, InferenceRound, LiveCompletionProgress } from './ai';
 import { readBlob } from './storage';
 import { unsupportedToolDiagnostic } from './harnessToolDiagnostics';
 import { incompleteModels } from './modelDownload';
 import { assertModelLicenseFiles, assertVisionProjectorLicenseFiles, catalogModelForPath, hasGemmaConsent, hasQwenResearchConsent } from './modelLicenses';
 import { assertExecutableToolCalls, completedMachineConclusion, gemmaBrowserMessages, isFiveMinutesAnswer, liveBrowserAnswer, scorePromptedSteps, scoreStructuredToolUse, qwen35ChatOptions, qwen35LoadOptions, visibleBrowserText, visibleReasoningEnvelope } from './browserInference';
 import { BONSAI_2_Q2_BROWSER_WARNING, GRANITE_40_WARNING, isBonsai2BrowserUnsupported, isBonsai2Q2BrowserUnsupported, isKnownIncompatibleGranite } from './modelCompatibility';
-import { collectProbeStream, type ProbeTokenProgress } from './probeStream';
+import { collectProbeStream, splitInlineReasoning, type ProbeTokenProgress } from './probeStream';
 import { GRANITE_COUNT_LETTERS_GRAMMAR, GRANITE_TOOL_TEMPERATURE, graniteToolMessages, normalizeGraniteToolResponse } from './graniteTools';
 import { browserThinkingBudget, browserThinkingOptions } from './browserThinking';
 import { hasPrismBrowserModel, hasPrismBrowserVision, loadPrismBrowserModel, prismChatCompletion, prismModelMetadata, prismVisionCompletion, unloadPrismBrowserModel } from './prismBrowserRuntime';
@@ -18,6 +18,7 @@ import { detectThinkingSpillover, type ThinkingSpillover } from './thinkingSpill
 import { browserContextWindow } from './browserContext';
 import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 import { createToolResultLimiter, toolResultBudget } from './toolResultBudget.ts';
+import { snapshotInference } from './inferenceTrace.ts';
 
 export type BrowserTools = {
   definitions: ChatCompletionTool[];
@@ -451,17 +452,22 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
     ? gemmaBrowserMessages(system, turns)
     : [{ role: 'system', content: system }, ...turns];
   const toolEvents: string[] = [];
+  const rounds: InferenceRound[] = [];
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
+  const thinkingSegments: string[] = [];
   const limitToolResult = createToolResultLimiter(tools ? toolResultBudget(status.contextWindow || browserContextWindow(config.model, config.contextWindow), outputLimit, system, turns, tools.definitions) : 0);
   for (let round = 0; round < 4; round++) {
     onTokenProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens: 0, maxOutputTokens: outputLimit, outputTokensPerSecond: 0, visibleText: '' });
-    const response = await createBrowserChatCompletion({
+    const parameters = {
       messages, max_tokens: outputLimit, abortSignal: signal,
       ...(catalogModelForPath(status.path)?.id === 'qwen35-2b' ? qwen35ChatOptions : {}),
       ...thinkingOptions,
       ...(tools && round < 3 ? { tools: tools.definitions, tool_choice: 'auto' as const } : {}),
-    }, onTokenProgress ? progress => onTokenProgress({
+    };
+    const { abortSignal: _abortSignal, ...requestBody } = parameters;
+    const requestSnapshot = snapshotInference(requestBody) as Record<string, unknown>;
+    const response = await createBrowserChatCompletion(parameters, onTokenProgress ? progress => onTokenProgress({
       promptProcessed: progress.promptProcessed,
       promptTotal: progress.promptTotal,
       promptCachedTokens: progress.promptCachedTokens,
@@ -469,11 +475,21 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
       maxOutputTokens: progress.maxOutputTokens,
       outputTokensPerSecond: progress.outputTokensPerSecond,
       visibleText: liveBrowserAnswer(progress.visibleText || ''),
+      reasoningText: progress.reasoningText,
     }) : undefined);
     if (response.usage?.prompt_tokens !== undefined) inputTokens = (inputTokens || 0) + response.usage.prompt_tokens;
     if (response.usage?.completion_tokens !== undefined) outputTokens = (outputTokens || 0) + response.usage.completion_tokens;
     const choice = response.choices[0];
     if (!choice) throw new Error('The browser model returned no response.');
+    const reasoning = (choice.message as typeof choice.message & { reasoning_content?: string | null }).reasoning_content;
+    const inlineReasoning = splitInlineReasoning(choice.message.content || '').reasoning;
+    if ((reasoning || inlineReasoning).trim()) thinkingSegments.push((reasoning || inlineReasoning).trim());
+    const traceRound: InferenceRound = { request: requestSnapshot, response: {
+      text: visibleBrowserText(choice.message.content), thinking: (reasoning || inlineReasoning).trim(),
+      toolCalls: snapshotInference(choice.message.tool_calls || []), finishReason: choice.finish_reason || undefined,
+      inputTokens: response.usage?.prompt_tokens, outputTokens: response.usage?.completion_tokens,
+    } };
+    rounds.push(traceRound);
     if (response.thinkingSpillover) throw new Error('The model continued its reasoning in the visible answer after reaching the thinking cap. Try Light or None, or another model.');
     const calls = choice.message.tool_calls || [];
     assertExecutableToolCalls(calls.length, choice.finish_reason, signal);
@@ -485,7 +501,7 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Tool arguments must be an object.');
           return { name: call.function.name, arguments: parsed as Record<string, unknown> };
         });
-        return { text: visibleBrowserText(choice.message.content), inputTokens, outputTokens, toolEvents, deferredToolCalls };
+        return { text: visibleBrowserText(choice.message.content), inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, deferredToolCalls, rounds };
       }
       messages.push(choice.message);
       for (const call of calls.slice(0, 3)) {
@@ -501,20 +517,20 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
         }
         result = limitToolResult(result);
         toolEvents.push(unsupported ? `${unsupportedToolDiagnostic(call.function.name, call.function.arguments)} · ${result}` : `${call.function.name}: ${result}`);
+        (traceRound.toolResults ||= []).push({ name: call.function.name, content: result });
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       }
       continue;
     }
     const answer = visibleBrowserText(choice.message.content);
     if (!answer) {
-      const reasoning = (choice.message as typeof choice.message & { reasoning_content?: string | null }).reasoning_content;
       const tokens = response.usage?.completion_tokens;
       const detail = choice.finish_reason === 'length' ? 'The output limit was reached before an answer.'
         : reasoning?.trim() ? 'The model produced reasoning but no visible answer.'
           : `The model stopped with ${choice.finish_reason || 'no finish reason'} and no visible answer.`;
       throw new Error(`${detail}${tokens ? ` ${tokens} tokens were generated.` : ''} Try loading the model again; if this persists, choose another browser model.`);
     }
-    return { text: answer, inputTokens, outputTokens, toolEvents };
+    return { text: answer, inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, rounds };
   }
   throw new Error('The browser model reached the tool-call limit. Ask a narrower question.');
 }

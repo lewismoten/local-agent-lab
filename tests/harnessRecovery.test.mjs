@@ -91,6 +91,22 @@ test('recovers a chunk write that was interrupted before conversation metadata w
   assert.equal(next.messageCount, 2);
 });
 
+test('response diagnostics stay beside their message when a conversation is copied', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('diagnostic-copy', folder);
+  const report = { version: 1, createdAt: '2026-01-01T00:00:00Z', model: { provider: 'browser', model: 'test' }, input: { system: 'Be concise.', turns: [{ role: 'user', content: 'Hello' }], note: 'Initial prompt.' }, output: { text: 'Hi', thinking: null, toolEvents: [] }, usage: { inputTokens: 5, outputTokens: 1, elapsedMs: 200, observedTokensPerSecond: 5 }, sampling: { seed: null, temperature: null, note: 'Runtime default.' } };
+  const source = createConversation('home');
+  await store.saveResponseDiagnostic('home', source.id, 'answer-1', report);
+  const first = await store.appendMessage(source, { ...message(0, 'assistant'), id: 'answer-1', hasDiagnostics: true });
+  const report2 = { ...report, version: 2, rounds: [{ request: { model: 'test', messages: [{ role: 'user', content: 'Hello' }] }, response: { text: 'Hi' } }] };
+  await store.saveResponseDiagnostic('home', source.id, 'answer-2', report2);
+  const saved = await store.appendMessage(first, { ...message(1, 'assistant'), id: 'answer-2', hasDiagnostics: true });
+  const copied = await store.copyConversation(saved, 'second-project');
+  assert.deepEqual(await store.responseDiagnostic('second-project', copied.id, 'answer-1'), report);
+  assert.deepEqual(await store.responseDiagnostic('second-project', copied.id, 'answer-2'), report2);
+  assert.ok((await store.messages(copied)).every(item => item.hasDiagnostics));
+});
+
 test('recovers a trailing message after crossing a chunk boundary', async () => {
   const store = new HarnessStore('boundary-test', new MemoryDirectory());
   let saved = createConversation('home');

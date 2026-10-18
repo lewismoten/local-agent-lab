@@ -1,11 +1,14 @@
-import type { AIConfig, ChatTurn, Completion, DeferredToolCall, LiveCompletionProgress } from './ai.ts';
+import type { AIConfig, ChatTurn, Completion, DeferredToolCall, InferenceRound, LiveCompletionProgress } from './ai.ts';
 import type { BrowserTools } from './browserModel.ts';
 import { hasOllamaModel, listOllamaModels } from './modelAvailability.ts';
 import { noteLocalOllamaUse } from './localOllama.ts';
 import { createToolResultLimiter, toolResultBudget } from './toolResultBudget.ts';
 import { streamOllamaChat } from './ollamaChatStream.ts';
+import { streamCompatibleChat } from './compatibleChatStream.ts';
+import { openAIReasoningSummary, streamOpenAIResponse } from './openAIResponseStream.ts';
 import { assertExecutableToolCalls } from './browserInference.ts';
 import { unsupportedToolDiagnostic } from './harnessToolDiagnostics.ts';
+import { snapshotInference } from './inferenceTrace.ts';
 
 type ToolRequest = { id: string; name: string; arguments: unknown };
 type ToolResult = { id: string; name: string; content: string };
@@ -29,6 +32,8 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
 export async function remoteToolComplete(config: AIConfig, turns: ChatTurn[], system: string, signal: AbortSignal | undefined, tools: BrowserTools, onTokenProgress?: (progress: LiveCompletionProgress) => void): Promise<Completion> {
   const base = trimUrl(config.endpoint);
   const toolEvents: string[] = [];
+  const rounds: InferenceRound[] = [];
+  const thinkingSegments: string[] = [];
   const limitToolResult = createToolResultLimiter(toolResultBudget(config.contextWindow, config.maxOutputTokens, system, turns, tools.definitions));
   let callCount = 0, inputTokens = 0, outputTokens = 0;
   const consume = async (calls: ToolRequest[]): Promise<{ results: ToolResult[]; deferred: DeferredToolCall[] }> => {
@@ -63,27 +68,37 @@ export async function remoteToolComplete(config: AIConfig, turns: ChatTurn[], sy
     const visible = typeof text === 'string' ? text.trim() : '';
     if (!visible && !deferred.length) throw new Error('The model returned no text after using tools.');
     const continuation = deferred.length && toolEvents.length ? `${visible}\n\nCompleted tool results:\n${toolEvents.slice(-3).join('\n').slice(0, MAX_RESULT_CHARS)}`.trim() : visible;
-    return { text: continuation, inputTokens, outputTokens, toolEvents, ...(deferred.length ? { deferredToolCalls: deferred } : {}) };
+    return { text: continuation, inputTokens, outputTokens, thinkingText: thinkingSegments.join('\n\n'), toolEvents, rounds, ...(deferred.length ? { deferredToolCalls: deferred } : {}) };
   };
 
   if (config.provider === 'openai' || config.provider === 'codex') {
     const input: Record<string, unknown>[] = turns.map(turn => ({ role: turn.role, content: turn.content }));
     for (let round = 0; round < MAX_ROUNDS; round++) {
+      if (round > 0) onTokenProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens: 0, maxOutputTokens: config.maxOutputTokens, outputTokensPerSecond: 0, visibleText: '', reasoningText: '' });
       const definitions = tools.definitions.map(item => ({ type: 'function', name: item.function.name, description: item.function.description, parameters: item.function.parameters, strict: false }));
-      const body = await post(base + '/responses', { Authorization: `Bearer ${config.apiKey}` }, {
+      const request = {
         model: config.model, instructions: system, input, tools: round === MAX_ROUNDS - 1 ? [] : definitions,
         max_output_tokens: config.maxOutputTokens, store: false,
         ...(config.effort !== 'default' ? { reasoning: { effort: config.effort } } : {}),
-      }, signal);
+      };
+      const requestSnapshot = snapshotInference(request) as Record<string, unknown>;
+      const streamed = onTokenProgress ? await streamOpenAIResponse(base + '/responses', config.apiKey, request, signal, onTokenProgress) : null;
+      if (streamed) requestSnapshot.stream = true;
+      const body = streamed?.body || await post(base + '/responses', { Authorization: `Bearer ${config.apiKey}` }, request, signal);
       inputTokens += body.usage?.input_tokens || 0; outputTokens += body.usage?.output_tokens || 0;
       const output = Array.isArray(body.output) ? body.output : [];
       const text = output.flatMap((item: any) => item.type === 'message' ? (item.content || []).filter((part: any) => part.type === 'output_text').map((part: any) => part.text || '') : []).join('\n');
+      const reasoning = openAIReasoningSummary(body) || streamed?.reasoningText || '';
+      if (reasoning.trim()) thinkingSegments.push(reasoning.trim());
       const calls: ToolRequest[] = output.filter((item: any) => item.type === 'function_call').map((item: any) => ({ id: item.call_id, name: item.name, arguments: item.arguments }));
+      rounds.push({ request: requestSnapshot, response: { text, thinking: reasoning, toolCalls: snapshotInference(calls), finishReason: body.status,
+        inputTokens: body.usage?.input_tokens, outputTokens: body.usage?.output_tokens } });
       assertExecutableToolCalls(calls.length, body.status, signal);
       if (!calls.length) return finished(text);
       if (round === MAX_ROUNDS - 1) throw new Error('The model reached the tool-call limit.');
       input.push(...output);
       const { results, deferred } = await consume(calls);
+      rounds.at(-1)!.toolResults = results.map(result => ({ name: result.name, content: result.content }));
       if (deferred.length) return finished(text, deferred);
       input.push(...results.map(result => ({ type: 'function_call_output', call_id: result.id, output: result.content })));
     }
@@ -99,29 +114,43 @@ export async function remoteToolComplete(config: AIConfig, turns: ChatTurn[], sy
       if (!hasOllamaModel(installed, config.model)) throw new Error(`Ollama model “${config.model}” is not installed. Choose an installed model in Settings & AI.`);
     }
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      if (round > 0 && ollama) onTokenProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens: 0, maxOutputTokens: config.maxOutputTokens, outputTokensPerSecond: 0, visibleText: '' });
+      if (round > 0) onTokenProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens: 0, maxOutputTokens: config.maxOutputTokens, outputTokensPerSecond: 0, visibleText: '', reasoningText: '' });
       const useTools = round < MAX_ROUNDS - 1;
       const bonsai2 = config.runtimePreset === 'bonsai2';
       const thinking = bonsai2 && config.thinkingTokens > 0;
-      const ollamaBody = ollama ? await streamOllamaChat(base, {
+      const ollamaRequest = {
         model: config.model, messages, options: { num_predict: config.maxOutputTokens, num_ctx: config.contextWindow },
         ...(config.thinkingTokens > 0 ? { think: true } : {}), ...(useTools ? { tools: tools.definitions } : {}),
-      }, signal, onTokenProgress) : null;
-      const compatibleBody = !ollama ? await post(base + '/chat/completions', config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}, {
+      };
+      const compatibleRequest = {
         model: config.model, messages, max_tokens: config.maxOutputTokens,
         ...(bonsai2 ? { chat_template_kwargs: { enable_thinking: thinking }, temperature: thinking ? 1.0 : 0.7, top_p: thinking ? 0.95 : 0.8, top_k: 20, min_p: 0, presence_penalty: thinking ? 1.0 : 1.5, repeat_penalty: 1.0 } : {}),
         ...(config.effort !== 'default' ? { reasoning_effort: config.effort } : {}),
         ...(useTools ? { tools: tools.definitions, tool_choice: 'auto' } : {}),
-      }, signal) : null;
+      };
+      const requestSnapshot = snapshotInference(ollama ? { ...ollamaRequest, stream: true } : compatibleRequest) as Record<string, unknown>;
+      const ollamaBody = ollama ? await streamOllamaChat(base, ollamaRequest, signal, onTokenProgress) : null;
+      const headers: Record<string, string> = config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {};
+      const streamed = !ollama && onTokenProgress ? await streamCompatibleChat(base + '/chat/completions', headers, compatibleRequest, signal, onTokenProgress) : null;
+      if (streamed?.streamed) requestSnapshot.stream = true;
+      const compatibleBody = !ollama ? streamed?.body || await post(base + '/chat/completions', headers, compatibleRequest, signal) : null;
       inputTokens += ollamaBody?.prompt_eval_count || compatibleBody?.usage?.prompt_tokens || 0;
       outputTokens += ollamaBody?.eval_count || compatibleBody?.usage?.completion_tokens || 0;
       const message = ollamaBody?.message || compatibleBody?.choices?.[0]?.message;
+      const reasoning = message?.thinking || message?.reasoning_content;
+      if (typeof reasoning === 'string' && reasoning.trim()) thinkingSegments.push(reasoning.trim());
       const calls: ToolRequest[] = (message?.tool_calls || []).map((item: any, index: number) => ({ id: item.id || `call_${round}_${index}`, name: item.function?.name, arguments: item.function?.arguments }));
+      rounds.push({ request: requestSnapshot, response: { text: typeof message?.content === 'string' ? message.content : '',
+        thinking: typeof reasoning === 'string' ? reasoning : undefined, toolCalls: snapshotInference(calls),
+        finishReason: ollamaBody?.done_reason || compatibleBody?.choices?.[0]?.finish_reason,
+        inputTokens: ollamaBody?.prompt_eval_count ?? compatibleBody?.usage?.prompt_tokens,
+        outputTokens: ollamaBody?.eval_count ?? compatibleBody?.usage?.completion_tokens } });
       assertExecutableToolCalls(calls.length, ollamaBody?.done_reason || compatibleBody?.choices?.[0]?.finish_reason, signal);
       if (!calls.length) { if (ollama) noteLocalOllamaUse(base, config.model); return finished(message?.content); }
       if (!useTools) throw new Error('The model reached the tool-call limit.');
       messages.push({ ...message, role: 'assistant' });
       const { results, deferred } = await consume(calls);
+      rounds.at(-1)!.toolResults = results.map(result => ({ name: result.name, content: result.content }));
       if (deferred.length) return finished(message?.content, deferred);
       messages.push(...results.map(result => ollama ? { role: 'tool', tool_name: result.name, content: result.content } : { role: 'tool', tool_call_id: result.id, content: result.content }));
     }
@@ -131,20 +160,27 @@ export async function remoteToolComplete(config: AIConfig, turns: ChatTurn[], sy
     const messages: Record<string, unknown>[] = turns.map(turn => ({ role: turn.role, content: turn.content }));
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const definitions = tools.definitions.map(item => ({ name: item.function.name, description: item.function.description, input_schema: item.function.parameters }));
-      const body = await post(base + '/messages', { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, {
+      const request = {
         model: config.model, max_tokens: config.maxOutputTokens, system, messages,
         ...(config.thinkingTokens > 0 ? { thinking: { type: 'enabled', budget_tokens: config.thinkingTokens } } : {}),
         ...(round < MAX_ROUNDS - 1 ? { tools: definitions } : {}),
-      }, signal);
+      };
+      const requestSnapshot = snapshotInference(request);
+      const body = await post(base + '/messages', { 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, request, signal);
       inputTokens += body.usage?.input_tokens || 0; outputTokens += body.usage?.output_tokens || 0;
       const content = Array.isArray(body.content) ? body.content : [];
+      const reasoning = content.filter((item: any) => item.type === 'thinking' && typeof item.thinking === 'string').map((item: any) => item.thinking).join('\n');
+      if (reasoning.trim()) thinkingSegments.push(reasoning.trim());
       const text = content.filter((item: any) => item.type === 'text').map((item: any) => item.text || '').join('\n');
       const calls: ToolRequest[] = content.filter((item: any) => item.type === 'tool_use').map((item: any) => ({ id: item.id, name: item.name, arguments: item.input }));
+      rounds.push({ request: requestSnapshot, response: { text, thinking: reasoning, toolCalls: snapshotInference(calls), finishReason: body.stop_reason,
+        inputTokens: body.usage?.input_tokens, outputTokens: body.usage?.output_tokens } });
       assertExecutableToolCalls(calls.length, body.stop_reason, signal);
       if (!calls.length) return finished(text);
       if (round === MAX_ROUNDS - 1) throw new Error('The model reached the tool-call limit.');
       messages.push({ role: 'assistant', content });
       const { results, deferred } = await consume(calls);
+      rounds.at(-1)!.toolResults = results.map(result => ({ name: result.name, content: result.content }));
       if (deferred.length) return finished(text, deferred);
       messages.push({ role: 'user', content: results.map(result => ({ type: 'tool_result', tool_use_id: result.id, content: result.content })) });
     }
@@ -154,20 +190,25 @@ export async function remoteToolComplete(config: AIConfig, turns: ChatTurn[], sy
     const contents: Record<string, unknown>[] = turns.map(turn => ({ role: turn.role === 'assistant' ? 'model' : 'user', parts: [{ text: turn.content }] }));
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const declarations = tools.definitions.map(item => ({ name: item.function.name, description: item.function.description, parameters: item.function.parameters }));
-      const body = await post(base + '/models/' + encodeURIComponent(config.model) + ':generateContent', { 'x-goog-api-key': config.apiKey }, {
+      const request = {
         systemInstruction: { parts: [{ text: system }] }, contents,
         ...(round < MAX_ROUNDS - 1 ? { tools: [{ functionDeclarations: declarations }] } : {}),
         generationConfig: { maxOutputTokens: config.maxOutputTokens, ...(config.thinkingTokens > 0 ? { thinkingConfig: { thinkingBudget: config.thinkingTokens } } : {}) },
-      }, signal);
+      };
+      const requestSnapshot = snapshotInference(request);
+      const body = await post(base + '/models/' + encodeURIComponent(config.model) + ':generateContent', { 'x-goog-api-key': config.apiKey }, request, signal);
       inputTokens += body.usageMetadata?.promptTokenCount || 0; outputTokens += body.usageMetadata?.candidatesTokenCount || 0;
       const parts = body.candidates?.[0]?.content?.parts || [];
       const text = parts.filter((item: any) => typeof item.text === 'string').map((item: any) => item.text).join('\n');
       const calls: ToolRequest[] = parts.filter((item: any) => item.functionCall).map((item: any, index: number) => ({ id: `call_${round}_${index}`, name: item.functionCall.name, arguments: item.functionCall.args }));
+      rounds.push({ request: requestSnapshot, response: { text, toolCalls: snapshotInference(calls), finishReason: body.candidates?.[0]?.finishReason,
+        inputTokens: body.usageMetadata?.promptTokenCount, outputTokens: body.usageMetadata?.candidatesTokenCount } });
       assertExecutableToolCalls(calls.length, body.candidates?.[0]?.finishReason, signal);
       if (!calls.length) return finished(text);
       if (round === MAX_ROUNDS - 1) throw new Error('The model reached the tool-call limit.');
       contents.push({ role: 'model', parts });
       const { results, deferred } = await consume(calls);
+      rounds.at(-1)!.toolResults = results.map(result => ({ name: result.name, content: result.content }));
       if (deferred.length) return finished(text, deferred);
       contents.push({ role: 'user', parts: results.map(result => ({ functionResponse: { name: result.name, response: { result: result.content } } })) });
     }

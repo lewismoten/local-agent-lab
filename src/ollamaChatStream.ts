@@ -45,6 +45,7 @@ export async function streamOllamaChat(
     maxOutputTokens,
     outputTokensPerSecond: (outputTokens || Math.ceil(content.length / 4)) / Math.max(.001, (performance.now() - started) / 1000),
     visibleText: content,
+    reasoningText: thinking,
   });
   const accept = (line: string) => {
     if (!line.trim()) return;
@@ -63,7 +64,7 @@ export async function streamOllamaChat(
       done = true;
       if (typeof chunk.done_reason === 'string') doneReason = chunk.done_reason;
     }
-    if (message.content || (chunk.done && content)) emit();
+    if (message.content || message.thinking || (chunk.done && (content || thinking))) emit();
   };
   try {
     while (true) {

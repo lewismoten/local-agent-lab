@@ -139,7 +139,7 @@ The influence lookup finds a public Wikipedia overview and asks your AI provider
 
 ## GitHub Pages
 
-The [Pages workflow](.github/workflows/pages.yml) builds Vite on pushes to `main` and deploys `dist`. In the GitHub repository, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. Push this project to `main` to run the workflow. The Vite base path is configured for `/rivers-of-memory/`.
+The [Pages workflow](../.github/workflows/pages.yml) builds Vite on pushes to `main` and deploys `dist`. In the GitHub repository, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**. Push this project to `main` to run the workflow. The current Vite base path is `/local-agent-lab/`.
 
 GitHub Pages hosts the app. It does not host Wllama, PrismML’s source, the browser compiler, or GGUF weights. Those optional files are downloaded from pinned upstream URLs into a folder you explicitly open in your browser; there is no central account or server sync. `workspace/`, `models/`, `engines/`, and `*.gguf` are ignored by Git so local drafts, images, and model weights are excluded from normal commits. Browser folder access requires a supporting browser on HTTPS or localhost. A new machine needs access to the hosted app (or a local Vite copy), but does not need to download model weights or the optional source and compiler again when they are already on your USB drive.
 

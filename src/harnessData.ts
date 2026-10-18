@@ -27,6 +27,7 @@ export type HarnessMessage = {
   inputTokens?: number;
   outputTokens?: number;
   toolEvents?: string[];
+  hasDiagnostics?: boolean;
 };
 
 export type ContextSegment = {

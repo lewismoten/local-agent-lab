@@ -3,6 +3,7 @@ import { compactConversation, messagesForModel, needsCompaction, promptForConver
 import { recallHistory } from './harnessHistory.ts';
 import { createConversation, identityInstructions, isoNow, newId, type AgentEvent, type ConversationMeta, type HarnessAgent, type HarnessManifest, type HarnessMessage, type MemoryRecord } from './harnessData.ts';
 import { modelStamp } from './harnessModelStamp.ts';
+import { responseDiagnostic } from './harnessResponseDiagnostics.ts';
 import { acquireModel } from './harnessLease.ts';
 import type { HarnessStore } from './harnessStore.ts';
 import { HarnessPartialToolError, harnessComplete, harnessToolReserve } from './harnessMultimodal.ts';
@@ -145,6 +146,7 @@ export async function executeHarnessAgent(args: {
     await append({ id: newId(), role: 'user', content: task || 'Review this project and report useful next work.', createdAt: isoNow() });
     const recent = await store.messages(session, session.activeFrom);
     let completion;
+    const responseStartedAt = performance.now();
     try {
       completion = await harnessComplete({ config, fallbacks: candidates.slice(1), turns: messagesForModel(recent), system, systemForConfig: candidate => promptForConversation(guidedProject, session, memories, task, identity, libraryContext, true, historyContext, systemPromptCharBudget(candidate)), signal, folder, history: { store, meta: session }, imageConfig: args.imageConfig, imagePriority, scope, approvalSessionKey: `${store.workspaceId}:${session.id}`, onToolApproval: args.onToolApproval });
     } catch (error) {
@@ -154,7 +156,17 @@ export async function executeHarnessAgent(args: {
       }
       throw error;
     }
-    await append({ id: newId(), role: 'assistant', content: completion.text, createdAt: isoNow(), model: modelStamp(completion.usedConfig), inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, toolEvents: preflightError ? [`Selected model preflight failed: ${base.label}: ${preflightError}`, ...(completion.toolEvents || [])] : completion.toolEvents });
+    const responseId = newId();
+    const stamp = modelStamp(completion.usedConfig);
+    let hasDiagnostics = false;
+    try {
+      await store.saveResponseDiagnostic(project.id, session.id, responseId,
+        responseDiagnostic(completion.usedConfig, stamp, completion.submittedPrompt, completion, performance.now() - responseStartedAt));
+      hasDiagnostics = true;
+    } catch (error) {
+      console.warn('Agent response diagnostics could not be saved:', error);
+    }
+    await append({ id: responseId, role: 'assistant', content: completion.text, createdAt: isoNow(), model: stamp, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, hasDiagnostics, toolEvents: preflightError ? [`Selected model preflight failed: ${base.label}: ${preflightError}`, ...(completion.toolEvents || [])] : completion.toolEvents });
     return { session, result: completion.text };
   } finally { release(); }
 }
