@@ -1,7 +1,8 @@
 import { complete, type AIConfig } from './ai';
-import { getBrowserModelStatus, quickBrowserModelCheck } from './browserModel';
-import { browserThinkingBudget, browserThinkingMode } from './browserThinking';
+import { getBrowserModelStatus, isBrowserModelLoadedFrom, loadBrowserModel, quickBrowserModelCheck } from './browserModel';
+import { browserThinkingBudget } from './browserThinking';
 import { browserContextWindow } from './browserContext';
+import { profileConfirmationKey } from './harnessProfileEligibility';
 export type ModelSession = { state: 'untested' | 'testing' | 'ready' | 'failed'; fingerprint: string; message: string };
 let status: ModelSession = { state: 'untested', fingerprint: '', message: 'Test this model before using AI features.' };
 let testSequence = 0;
@@ -11,17 +12,27 @@ const publish = (value: ModelSession) => { status = value; listeners.forEach(lis
 export const getModelSession = () => status;
 export const subscribeModelSession = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 // The key is held only in memory and is never serialized or shown in the UI.
-export const modelFingerprint = (config: AIConfig) => [config.id, config.provider, config.model, config.endpoint, config.provider === 'browser' ? browserContextWindow(config.model, config.contextWindow) : config.contextWindow, config.runtimePreset,
-  config.provider === 'browser' ? browserThinkingBudget(config) : config.maxOutputTokens,
-  config.effort, config.provider === 'browser' ? browserThinkingMode(config) : config.thinkingTokens, config.apiKey].join('\u0000');
+// Output, context, and thinking changes apply on the next request without
+// requiring another connection test. Browser loading still checks those settings.
+export const modelFingerprint = profileConfirmationKey;
+/** A successful check remains valid until the workspace changes or this page closes. */
+export const isModelConfirmed = (config: AIConfig) => readyFingerprints.has(modelFingerprint(config));
 export const isModelReady = (config: AIConfig) => {
-  if (!readyFingerprints.has(modelFingerprint(config))) return false;
+  if (!isModelConfirmed(config)) return false;
   if (config.provider === 'browser') {
     const browser = getBrowserModelStatus();
     return browser.state === 'ready' && browser.path === config.model && browser.contextWindow === browserContextWindow(config.model, config.contextWindow) && (browser.thinkingBudgetTokens ?? 0) === browserThinkingBudget(config);
   }
   return true;
 };
+/** Call while holding the shared model lease. A prior check in this tab remains valid after a temporary unload. */
+export async function ensureBrowserModelReady(config: AIConfig, folder: FileSystemDirectoryHandle): Promise<void> {
+  if (config.provider !== 'browser' || !config.model.trim()) throw new Error('Choose a browser model first.');
+  if (!isBrowserModelLoadedFrom(folder, config.model, config.contextWindow, browserThinkingBudget(config))) {
+    await loadBrowserModel(folder, config.model, config.contextWindow, browserThinkingBudget(config));
+  }
+  if (!isModelReady(config)) await testModel(config);
+}
 export async function testModel(config: AIConfig) {
   const sequence = ++testSequence;
   const fingerprint = modelFingerprint(config);

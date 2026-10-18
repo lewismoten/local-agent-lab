@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { completedMachineConclusion, gemmaBrowserMessages, isFiveMinutesAnswer, machineConclusion, parsePromptedSteps, scorePromptedSteps, scoreStructuredToolUse, qwen35ChatOptions, qwen35LoadOptions, visibleBrowserText, visibleReasoningEnvelope } from '../src/browserInference.ts';
+import { assertExecutableToolCalls, completedMachineConclusion, gemmaBrowserMessages, isFiveMinutesAnswer, liveBrowserAnswer, machineConclusion, parsePromptedSteps, scorePromptedSteps, scoreStructuredToolUse, qwen35ChatOptions, qwen35LoadOptions, visibleBrowserText, visibleReasoningEnvelope } from '../src/browserInference.ts';
+
+test('incomplete or cancelled model output cannot execute tool calls', () => {
+  for (const reason of ['length', 'incomplete', 'max_tokens', 'MAX_TOKENS']) {
+    assert.throws(() => assertExecutableToolCalls(1, reason), /stopped before finishing its tool calls/);
+  }
+  assert.doesNotThrow(() => assertExecutableToolCalls(1, 'tool_calls'));
+  assert.doesNotThrow(() => assertExecutableToolCalls(1, 'stop'));
+  assert.doesNotThrow(() => assertExecutableToolCalls(0, 'length'));
+  const controller = new AbortController();
+  controller.abort(new DOMException('Stopped by user.', 'AbortError'));
+  assert.throws(() => assertExecutableToolCalls(1, 'tool_calls', controller.signal), /Stopped by user/);
+});
 
 test('Qwen3.5 browser load options follow the selected thinking mode', () => {
   assert.equal(qwen35LoadOptions(false).default_template_kwargs.enable_thinking, false);
@@ -22,6 +34,14 @@ test('visible browser text excludes Qwen thinking markers', () => {
   assert.equal(visibleReasoningEnvelope('<|channel>thought\nprivate work\n<|channel>text\nready'), 'channel-tags');
   assert.equal(visibleReasoningEnvelope('Let me explain. The answer is ready.'), null);
   assert.equal(visibleBrowserText(null), '');
+});
+
+test('live chat preview hides unfinished thinking and tool calls', () => {
+  assert.equal(liveBrowserAnswer('<thi'), '');
+  assert.equal(liveBrowserAnswer('<think>private work'), '');
+  assert.equal(liveBrowserAnswer('<think>private work</think>Public answer'), 'Public answer');
+  assert.equal(liveBrowserAnswer('I will check this. <tool_call>{"name":"read_file"}</tool_call>'), 'I will check this.');
+  assert.equal(liveBrowserAnswer('Visible answer'), 'Visible answer');
 });
 
 test('prompted steps require complete tags and a separate answer', () => {

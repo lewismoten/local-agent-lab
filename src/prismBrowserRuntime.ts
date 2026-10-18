@@ -116,7 +116,7 @@ export async function prismChatCompletion(params: {
       outputTokens++;
       if (event.phase === 'think') { reasoning += event.text; thinkTokens++; }
       else answer += event.text;
-      onProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens, reasoningTokens: thinkTokens, responseTokens: outputTokens - thinkTokens, maxOutputTokens: params.max_tokens, outputEstimated: false, outputTokensPerSecond: outputTokens / Math.max(0.001, (performance.now() - started) / 1000), reasoningText: reasoning, responseText: answer });
+      onProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens, reasoningTokens: thinkTokens, responseTokens: outputTokens - thinkTokens, maxOutputTokens: params.max_tokens, outputEstimated: false, outputTokensPerSecond: outputTokens / Math.max(0.001, (performance.now() - started) / 1000), reasoningText: reasoning, responseText: answer, visibleText: answer });
     }
   }
   const calls = parsePrismToolCalls(answer, params.tools);

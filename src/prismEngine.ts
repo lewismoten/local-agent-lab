@@ -200,6 +200,8 @@ export const prismEngineManager = {
     await active;
   },
   pause() { controller?.abort(); },
+  async pauseAndWait() { this.pause(); await active; },
+  resetWorkspace() { discoveryId++; publish({ folder: null, status: 'idle', installed: false, bytes: 0, currentAsset: '', error: '', revision: state.revision + 1 }); },
   async remove(folder: FileSystemDirectoryHandle) {
     discoveryId++;
     controller?.abort();

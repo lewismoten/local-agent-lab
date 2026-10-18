@@ -3,6 +3,7 @@ import type { ChatCompletionChunk, ChatCompletionResponse, ChatCompletionToolCal
 export type ProbeTokenProgress = {
   promptProcessed: number;
   promptTotal: number;
+  promptCachedTokens?: number;
   outputTokens: number;
   reasoningTokens: number;
   responseTokens: number;
@@ -11,6 +12,7 @@ export type ProbeTokenProgress = {
   outputTokensPerSecond: number;
   reasoningText?: string;
   responseText?: string;
+  visibleText?: string;
 };
 
 export function splitInlineReasoning(content: string): { reasoning: string; response: string } {
@@ -30,6 +32,7 @@ export async function collectProbeStream(
 ): Promise<ChatCompletionResponse> {
   let promptTotal = 0;
   let promptProcessed = 0;
+  let promptCachedTokens = 0;
   let outputTokens = 0;
   let observedOutputChunks = 0;
   let outputStartedAt = 0;
@@ -49,10 +52,12 @@ export async function collectProbeStream(
     model = chunk.model || model;
     if (chunk.prompt_progress) {
       promptTotal = chunk.prompt_progress.total;
+      promptCachedTokens = Math.max(0, chunk.prompt_progress.cache);
       promptProcessed = Math.min(promptTotal, chunk.prompt_progress.cache + chunk.prompt_progress.processed);
     }
     if (chunk.usage) {
       usage = chunk.usage;
+      promptCachedTokens = Math.max(promptCachedTokens, chunk.usage.prompt_tokens_details?.cached_tokens || 0);
       promptProcessed = chunk.usage.prompt_tokens;
       promptTotal = Math.max(promptTotal, promptProcessed);
     }
@@ -85,7 +90,7 @@ export async function collectProbeStream(
     const live = reasoningContent ? { reasoning: reasoningContent, response: content } : splitInlineReasoning(content);
     const liveCalls = [...calls.values()].map(call => `Tool: ${call.function.name || 'function'}\n${call.function.arguments}`).join('\n\n');
     const responseText = [live.response, liveCalls].filter(Boolean).join('\n\n');
-    onProgress({ promptProcessed, promptTotal, outputTokens, reasoningTokens, responseTokens, maxOutputTokens, outputEstimated: !usage || observedOutputChunks > usage.completion_tokens, outputTokensPerSecond, ...(live.reasoning ? { reasoningText: live.reasoning } : {}), ...(responseText ? { responseText } : {}) });
+    onProgress({ promptProcessed, promptTotal, promptCachedTokens, outputTokens, reasoningTokens, responseTokens, maxOutputTokens, outputEstimated: !usage || observedOutputChunks > usage.completion_tokens, outputTokensPerSecond, visibleText: live.response, ...(live.reasoning ? { reasoningText: live.reasoning } : {}), ...(responseText ? { responseText } : {}) });
   }
   const toolCalls = [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call).filter(call => call.function.name);
   return {

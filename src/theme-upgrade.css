@@ -1,0 +1,190 @@
+/* Neon instrumentation around a quiet, dark work surface. */
+:root {
+  color-scheme: dark;
+  background: #050915;
+}
+
+.harness {
+  --h-bg: #050915;
+  --h-panel: #101c30;
+  --h-panel-2: #172840;
+  --h-line: #456680;
+  --h-text: #f2f9ff;
+  --h-muted: #b8cbda;
+  --h-cyan: #79f5e6;
+  color-scheme: dark;
+  background: var(--h-bg);
+}
+
+.harness-sidebar {
+  background:
+    radial-gradient(ellipse 95% 31% at 0 0, #23536777, transparent),
+    radial-gradient(ellipse 78% 43% at 100% 100%, #4b356355, transparent),
+    linear-gradient(170deg, #101d31, #080f20 72%);
+}
+
+.harness-sidebar-signal {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  height: 32px;
+  margin: 0 18px 4px;
+  padding: 4px 12px;
+  border: 1px solid #5d858e66;
+  border-radius: 5px;
+  background:
+    linear-gradient(90deg, #78f1e31a 1px, transparent 1px) 0 0 / 22px 100%,
+    linear-gradient(90deg, #122638, #15233a);
+  box-shadow: inset 0 1px #d4fff015, 0 0 18px #5df2dd0b;
+  overflow: hidden;
+}
+
+.harness-sidebar-signal span {
+  flex: 1;
+  height: 35%;
+  max-width: 12px;
+  border-radius: 2px;
+  background: linear-gradient(#9ffff0, #3cbea9);
+  box-shadow: 0 0 9px #70f7e45a;
+  transform-origin: center;
+}
+.harness-sidebar-signal span:nth-child(3n) { height: 70%; background: linear-gradient(#c9acff, #7664b9); box-shadow: 0 0 9px #b499ff55; }
+.harness-sidebar-signal span:nth-child(4n) { height: 95%; }
+.harness-sidebar-signal span:nth-child(5n) { height: 22%; }
+
+.harness-notices-link { margin-top: 3px; }
+.harness-atmosphere { opacity: .7; }
+.harness-atmosphere-horizon {
+  position: absolute;
+  right: -7%;
+  bottom: 0;
+  width: 100%;
+  height: 36%;
+  transform: perspective(360px) rotateX(61deg);
+  transform-origin: bottom center;
+  background:
+    linear-gradient(90deg, #7ee9ed31 1px, transparent 1px) 0 0 / 43px 100%,
+    linear-gradient(#7ee9ed31 1px, transparent 1px) 0 0 / 100% 31px;
+  border-top: 1px solid #86f7e960;
+  mask-image: linear-gradient(transparent 2%, #000 74%);
+  box-shadow: 0 -11px 28px #6cebdd25;
+}
+.harness-atmosphere-glyphs {
+  position: absolute;
+  inset: 14% 5% 14% 20%;
+  border-top: 1px solid #8eecde4d;
+  border-right: 1px solid #a58eff35;
+  background:
+    linear-gradient(#87fbe8, #87fbe8) 0 0 / 28px 2px no-repeat,
+    linear-gradient(90deg, #87fbe8, #87fbe8) 0 0 / 2px 28px no-repeat,
+    linear-gradient(#bda0ff, #bda0ff) right bottom / 28px 2px no-repeat,
+    linear-gradient(90deg, #bda0ff, #bda0ff) right bottom / 2px 28px no-repeat,
+    repeating-linear-gradient(90deg, #8ef3e644 0 1px, transparent 1px 18px) 50% 10px / 72% 7px no-repeat;
+  opacity: .56;
+  mask-image: linear-gradient(90deg, transparent 3%, #000 36%);
+}
+
+.harness-topbar { box-shadow: 0 1px #82f9e01c, 0 12px 38px #0008; }
+.harness-breadcrumb strong { color: #e9fffb; text-shadow: 0 0 15px #75f6e547; }
+.harness-top-actions { box-shadow: inset 0 1px #b6fff128, 0 0 15px #69f0dc14; }
+
+.harness-page .harness-heading,
+.harness-chat-header {
+  border-bottom-color: #517b91;
+  background-color: #102039ca;
+  box-shadow: inset 0 1px #d8fff018, 0 12px 34px #0005;
+}
+
+.harness-page .harness-heading::after,
+.harness-chat-header::after {
+  content: '';
+  position: absolute;
+  right: 20px;
+  bottom: -1px;
+  width: min(25%, 170px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--view-accent, #79f5e6));
+  box-shadow: 0 0 14px var(--view-accent, #79f5e6);
+  pointer-events: none;
+}
+
+.harness-page .harness-card,
+.harness-results button,
+.harness :is(.browser-model-panel, .model-catalog, .harness-file-list, .harness-file-editor, .harness-preferences) {
+  background-image:
+    radial-gradient(circle at 100% 0, var(--view-accent-soft, #79f5e617), transparent 42%),
+    linear-gradient(145deg, #192a42, #101c30 68%);
+  border-color: #4d7187;
+  box-shadow: inset 0 1px #e2fff017, 0 13px 33px #0007;
+}
+
+.harness-page .harness-card:hover,
+.harness-results button:hover { border-color: var(--view-accent, #79f5e6); }
+.harness-page .harness-card > svg { filter: drop-shadow(0 0 10px currentColor); }
+
+.harness-message.assistant .harness-message-avatar,
+.harness-message.user .harness-message-avatar {
+  box-shadow: 0 0 0 1px #92f8ea4d, 0 0 20px #79f5e630;
+}
+.harness-message.user .harness-message-avatar { box-shadow: 0 0 0 1px #c4a7ff6b, 0 0 20px #a991ff29; }
+.harness-memory-proposal {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  margin: 9px 0 2px;
+  padding: 7px 10px;
+  border: 1px solid #72c9bc;
+  border-radius: 7px;
+  color: #dffff8;
+  background: #1b4547;
+  box-shadow: inset 0 1px #d4fff01b, 0 0 15px #64e8d61b;
+  font-size: 12px;
+  text-align: left;
+}
+.harness-memory-proposal:hover { border-color: #a0ffed; background: #28595b; }
+.harness-compose-box:focus-within { box-shadow: inset 0 1px #e2fff01d, 0 0 0 2px #79f5e631, 0 10px 28px #0009; }
+
+.harness :is(.browser-model-tabs, .diagnostic-tabs) button.active {
+  color: #e8fffb;
+  text-shadow: 0 0 10px #79f5e660;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover td {
+  background: #203b52;
+}
+
+dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog, .voice-editor-dialog) {
+  background:
+    radial-gradient(ellipse 65% 45% at 100% 0, #7854ac26, transparent),
+    linear-gradient(145deg, #1a2d44, #0d192a 75%);
+  border-color: #6b9baa;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-sidebar-signal span { animation: cyber-signal 3.2s ease-in-out infinite alternate; }
+  .harness-sidebar-signal span:nth-child(2n) { animation-delay: -.7s; }
+  .harness-sidebar-signal span:nth-child(3n) { animation-delay: -1.6s; }
+  .harness-sidebar-signal span:nth-child(5n) { animation-delay: -2.2s; }
+  .harness-atmosphere-glyphs { animation: cyber-glyph-breathe 8s ease-in-out infinite alternate; }
+  .harness-atmosphere-horizon { animation: cyber-horizon-breathe 10s ease-in-out infinite alternate; }
+  .harness-nav button.active svg { animation: cyber-nav-glow 4s ease-in-out infinite; }
+}
+@keyframes cyber-signal { to { transform: scaleY(.35); opacity: .5; } }
+@keyframes cyber-glyph-breathe { to { opacity: .3; } }
+@keyframes cyber-horizon-breathe { to { opacity: .42; } }
+@keyframes cyber-nav-glow { 50% { filter: drop-shadow(0 0 8px currentColor); } }
+
+@media (max-width: 700px) {
+  .harness-atmosphere { opacity: .22; width: 70vw; right: -18vw; }
+  .harness-atmosphere-horizon, .harness-atmosphere-glyphs { display: none; }
+  .harness-sidebar-signal { height: 27px; margin-bottom: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness-sidebar-signal span,
+  .harness-atmosphere-horizon,
+  .harness-atmosphere-glyphs,
+  .harness-nav button.active svg { animation: none !important; }
+}

@@ -4,6 +4,7 @@ import MarkdownContent from './MarkdownContent';
 import type { AIConfig } from './ai';
 import { getNeedleAssets, NEEDLE_LABELS, NEEDLE_LEGACY_MODEL_PATHS, NEEDLE_MODEL_ASSETS, NEEDLE_MODEL_PATHS, subscribeNeedleAssets, type NeedleVersion } from './needleAssets';
 import { loadNeedle, needleLoaded, runNeedle } from './needleRuntime';
+import { acquireModel, withModelLease } from './harnessLease.ts';
 import { NEEDLE_TESTS, needleToolCalls, rescoreNeedleReport, runNeedleDiagnostics, type NeedleReport, type NeedleTestKey } from './needleDiagnostics';
 import { loadLatestDiagnosticJson, saveDiagnosticJson } from './diagnosticReports';
 import { ensureWritableFolder } from './storage';
@@ -82,7 +83,10 @@ export default function NeedleModelDiagnostics({ folder, version, disabled = fal
     controller.current = nextController;
     followCurrent.current = true;
     setBusy(true); setProgress(0); setReport(null); setSelectedIndex(0); setMessage('Checking files…');
+    let release: (() => void) | undefined;
     try {
+      setMessage('Waiting for model…');
+      release = await acquireModel(`diagnostics:needle:${version}`, nextController.signal);
       if (!await ensureWritableFolder(folder)) throw new Error('Allow workspace access to save diagnostics.');
       const result = await runNeedleDiagnostics(folder, version, (finished, total, key, partial) => {
         setProgress(finished); setReport(partial); setMessage(`${finished}/${total} checks finished`);
@@ -92,7 +96,7 @@ export default function NeedleModelDiagnostics({ folder, version, disabled = fal
       setMessage(result.error || `Diagnostics saved to ${result.savedPath}.`);
       showToast(result.error ? `${NEEDLE_LABELS[version]} diagnostics failed: ${result.error}` : `${NEEDLE_LABELS[version]} diagnostics complete.`, result.error ? 'error' : 'success');
     } catch (error) { setMessage(nextController.signal.aborted ? 'Tests stopped.' : error instanceof Error ? error.message : String(error)); }
-    finally { controller.current = null; setBusy(false); }
+    finally { release?.(); controller.current = null; setBusy(false); }
   }
 
   useEffect(() => {
@@ -122,8 +126,10 @@ export default function NeedleModelDiagnostics({ folder, version, disabled = fal
     try {
       const tools = JSON.parse(customTools) as unknown;
       if (!Array.isArray(tools) || !tools.length || tools.some(item => !item || typeof item.name !== 'string')) throw new Error('Tools must be a JSON array with named functions.');
-      await loadNeedle(folder, version);
-      const output = await runNeedle(folder, version, customQuery, JSON.stringify(tools));
+      const output = await withModelLease(`diagnostics:needle-tool:${version}`, async () => {
+        await loadNeedle(folder, version);
+        return runNeedle(folder, version, customQuery, JSON.stringify(tools));
+      });
       const calls = needleToolCalls(output);
       setCustomOutput(JSON.stringify({ calls, raw: (() => { try { return JSON.parse(output); } catch { return output; } })() }, null, 2));
     } catch (error) { setCustomError(error instanceof Error ? error.message : String(error)); }

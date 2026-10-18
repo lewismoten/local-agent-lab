@@ -14,6 +14,7 @@ import CropPreview from './CropPreview';
 import { CROP_IMAGE_SIZE, straightenCrop } from './visionCrop';
 import { saveDiagnosticJson } from './diagnosticReports';
 import { modelFolderName } from './modelFolders';
+import { acquireModel } from './harnessLease.ts';
 
 export default function VisionDiagnostics({ config, folder, disabled, openRequest, onOpenRequestHandled }: { config: AIConfig; folder: FileSystemDirectoryHandle | null; disabled: boolean; openRequest?: { path: string; token: number } | null; onOpenRequestHandled?: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -113,7 +114,10 @@ export default function VisionDiagnostics({ config, folder, disabled, openReques
     setCheckedAt(new Date().toISOString());
     setMessage('Loading model with vision projector…');
     const started = performance.now();
+    let release: (() => void) | undefined;
     try {
+      setMessage('Waiting for model…');
+      release = await acquireModel(`diagnostics:vision:${config.model}`, next.signal);
       if (!await ensureWritableFolder(folder)) throw new Error('The workspace folder is not writable.');
       if (catalog) await ensureVisionProjectorLicenseFiles(folder, catalog);
       await loadBrowserModel(folder, config.model, config.contextWindow, browserThinkingBudget(config), true);
@@ -126,7 +130,7 @@ export default function VisionDiagnostics({ config, folder, disabled, openReques
       }, next.signal);
       if (!next.signal.aborted) showToast(`Vision tests finished: ${tested.filter(item => item.status === 'passed').length}/${tested.length} passed (${Math.round((performance.now() - started) / 1000)}s).`);
     } catch (error) { setMessage(next.signal.aborted ? 'Vision tests stopped.' : error instanceof Error ? error.message : String(error)); }
-    finally { controller.current = null; setBusy(false); }
+    finally { release?.(); controller.current = null; setBusy(false); }
   }
 
   function report(withImages = false) {

@@ -147,7 +147,8 @@ export const speechAssetsManager = {
       return this.discover(folder);
     }
     const promise = (async () => {
-      publish({ folder, checked: empty(false), installed: empty(false), saved: empty(0), checkErrors: {}, error: '' });
+      const sameFolder = state.folder === folder;
+      publish({ folder, active: null, queue: sameFolder ? state.queue : [], paused: sameFolder && state.paused, checked: empty(false), installed: empty(false), saved: empty(0), checkErrors: {}, current: '', error: '' });
       for (const group of ['engine', 'kokoro_engine', 'chatterbox_engine', 'qwen_engine', 'openvoice_engine', ...SPEECH_MODELS.map(model => model.id)] as SpeechGroup[]) {
         let bytes = 0;
         let complete = true;
@@ -174,5 +175,6 @@ export const speechAssetsManager = {
     publish({ queue: [...state.queue, group] }); void startNext(folder);
   },
   pause() { publish({ paused: true }); aborter?.abort(); },
+  async pauseAndWait() { this.pause(); await Promise.all([activeTask, discovery?.promise.catch(() => {})]); },
   resume(folder: FileSystemDirectoryHandle) { if (state.folder !== folder) return; publish({ paused: false, error: '' }); void startNext(folder); },
 };

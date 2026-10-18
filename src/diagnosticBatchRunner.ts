@@ -11,6 +11,7 @@ import { createReferencePhotoFixture, createVisionFixtures, PUBLIC_REFERENCE_PHO
 import { NEEDLE_MODEL_PATHS, type NeedleVersion } from './needleAssets';
 import { runNeedleDiagnostics } from './needleDiagnostics';
 import { unloadNeedle } from './needleRuntime';
+import { acquireModel } from './harnessLease.ts';
 
 export type BatchItem = { path: string; state: 'waiting' | 'running' | 'done' | 'failed' | 'stopped'; step: string; textReport?: string; visionReport?: string; visionSkipped?: string; error?: string };
 export type BatchSnapshot = { running: boolean; items: BatchItem[]; current: number; completed: number; step: string; error?: string };
@@ -45,8 +46,11 @@ export async function startBatchDiagnostics(folder: FileSystemDirectoryHandle, p
   let fixtures: VisionFixture[] | null = null;
   let modelLoadedByBatch = false;
   let needleLoadedByBatch = false;
+  let release: (() => void) | undefined;
   try {
     if (!await ensureWritableFolder(folder)) throw new Error('The workspace folder is not writable.');
+    patch({ step: 'Waiting for model…' });
+    release = await acquireModel('diagnostics:batch', signal);
     for (const [index, path] of paths.entries()) {
       isStopped(signal);
       patch({ current: index, step: `Loading ${path.split('/').pop()}…` });
@@ -164,6 +168,7 @@ export async function startBatchDiagnostics(folder: FileSystemDirectoryHandle, p
     fixtures?.forEach(item => URL.revokeObjectURL(item.url));
     if (modelLoadedByBatch) await unloadBrowserModel().catch(() => {});
     if (needleLoadedByBatch) await unloadNeedle().catch(() => {});
+    release?.();
     controller = null;
     patch({ running: false, step: signal.aborted ? 'Stopped' : 'Finished' });
   }

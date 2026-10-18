@@ -16,6 +16,7 @@ import { recordCapability } from './capabilityLedger';
 import { NEEDLE_MODEL_PATHS, type NeedleVersion } from './needleAssets';
 import NeedleModelDiagnostics from './NeedleModelDiagnostics';
 import { GGUF_SCORING_VERSION } from './ggufReportRescore';
+import { acquireModel } from './harnessLease.ts';
 
 const DiagnosticDetail = lazy(() => import('./DiagnosticDetail'));
 
@@ -105,7 +106,10 @@ function GgufModelDiagnostics({ config, folder, disabled = false, openRequest, o
       observed: {},
     };
     setReport(next);
+    let release: (() => void) | undefined;
     try {
+      setStep('Waiting for model…');
+      release = await acquireModel(`diagnostics:text:${config.model}`, controller.signal);
       next.observed.fileBytes = (await readBlob(folder, config.model)).size;
       void recordCapability(folder, config.model, catalog?.label || config.model, 'fileSize', catalog && next.observed.fileBytes !== catalog.bytes ? 'failed' : 'passed', `${next.observed.fileBytes} bytes measured${catalog ? `; ${catalog.bytes} bytes listed` : ''}`, next.observed.fileBytes).catch(error => setStep(`Could not save capability result: ${error}`));
       try { await assertModelLicenseFiles(folder, config.model); next.observed.licenseFiles = 'Present and matched'; }
@@ -144,7 +148,7 @@ function GgufModelDiagnostics({ config, folder, disabled = false, openRequest, o
         void recordCapability(folder, config.model, catalog?.label || config.model, result.key, result.status, result.detail, next.observed.fileBytes).catch(error => setStep(`Could not save capability result: ${error}`));
       }, controller.signal);
     } catch (error) { next.error = controller.signal.aborted ? 'Tests stopped.' : error instanceof Error ? error.message : String(error); }
-    finally { testController.current = null; setReport({ ...next, observed: { ...next.observed } }); setStep(''); setBusy(false); }
+    finally { release?.(); testController.current = null; setReport({ ...next, observed: { ...next.observed } }); setStep(''); setBusy(false); }
   }
   async function copy() {
     if (!report) return;
@@ -214,7 +218,7 @@ function GgufModelDiagnostics({ config, folder, disabled = false, openRequest, o
           <h3>Tests</h3><div className="diagnostic-overview-tests">{testLabels.map(({ key, label }, index) => { const result = testResults.find(item => item.key === key); return <div key={key}><span>{label}</span><strong>{result?.warning === 'thinking-spillover' ? '⚠️ Reasoning spillover' : result?.status === 'passed' ? result.argumentAccuracy === 'failed' ? '✅ Tool call · ⚠️ Arguments' : result.answerAccuracy === 'failed' ? '✅ Format · ⚠️ Answer' : '✅ Passed' : result?.status === 'failed' ? '❌ Failed' : result?.status === 'inconclusive' ? '❔ Inconclusive' : testRuns[index] ? busy ? '⏳ Running' : '○ Stopped' : '○ Not run'}</strong></div>; })}</div>
         </div> : selectedProgress && selectedCounts ? <>
           <DiagnosticTokenGraph counts={selectedCounts} thinkingBudget={selectedTest?.key === 'thinking' ? thinkingBudget : 0}/>
-          <div className="diagnostic-progress-row"><strong>Prompt</strong><progress aria-label="Prompt tokens processed" value={selectedProgress.promptProcessed} max={selectedProgress.promptTotal || undefined}/><span className="diagnostic-count">{selectedProgress.promptProcessed.toLocaleString()}/{selectedProgress.promptTotal ? selectedProgress.promptTotal.toLocaleString() : '—'}</span></div>
+          <div className="diagnostic-progress-row"><strong>Prompt</strong><progress aria-label="Prompt tokens processed" value={selectedProgress.promptProcessed} max={selectedProgress.promptTotal || undefined}/><span className="diagnostic-count">{selectedProgress.promptProcessed.toLocaleString()}/{selectedProgress.promptTotal ? selectedProgress.promptTotal.toLocaleString() : '—'}{selectedProgress.promptCachedTokens ? ` · ${selectedProgress.promptCachedTokens.toLocaleString()} cached` : ''}</span></div>
           <p className="diagnostic-test-outcome" aria-live="polite">{selectedResult?.detail || liveSpillover && `⚠️ ${liveSpillover.detail}` || (selectedRunning ? 'Running…' : 'Waiting to run.')}{selectedTest?.key === 'thinking' && thinkingAnswer?.detail && <> <strong>{thinkingAnswer.warning === 'thinking-spillover' ? '⚠️' : thinkingAnswer.status === 'passed' ? '✅' : thinkingAnswer.status === 'failed' ? '❌' : '❔'} Thinking answer:</strong> {thinkingAnswer.detail}</>}</p>
           <div className="diagnostic-live-transcript">
             <section className="diagnostic-live-part"><h3>Prompt</h3><div className="diagnostic-live-prompt">{selectedProgress.input.messages.map((message, index) => <div className="diagnostic-prompt-message" key={index}><strong>{message.role}</strong><div className="diagnostic-rendered"><MarkdownContent>{typeof message.content === 'string' ? message.content : (message.content || []).map(part => part.type === 'text' ? part.text : '[image]').join('\n')}</MarkdownContent></div></div>)}{selectedProgress.input.tools?.map((tool, index) => <div className="diagnostic-prompt-message" key={`tool-${index}`}><strong>Tool: {tool.function.name}</strong><pre>{JSON.stringify(tool.function.parameters, null, 2)}</pre></div>)}<p className="diagnostic-live-options">Max output {selectedProgress.input.max_tokens.toLocaleString()}{selectedProgress.input.chat_template_kwargs?.enable_thinking ? ' · Thinking on' : ''}</p></div></section>

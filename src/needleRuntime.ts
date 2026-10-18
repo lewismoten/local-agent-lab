@@ -1,8 +1,9 @@
 import { assertNeedleFiles, type NeedleVersion } from './needleAssets.ts';
-import { withLocalModelMemory } from './localModelMemory.ts';
+import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 
 type Reply = { id: number; result?: string | null; error?: string };
 let worker: Worker | null = null;
+registerResidentModel('needle', () => worker !== null, unloadNeedle);
 let loaded: { folder: FileSystemDirectoryHandle; version: NeedleVersion } | null = null;
 const listeners = new Set<() => void>();
 export const getNeedleRuntimeStatus = () => loaded;
@@ -69,4 +70,5 @@ export async function runNeedle(folder: FileSystemDirectoryHandle, version: Need
 export async function unloadNeedle() {
   if (worker) await send({ kind: 'unload' }).catch(() => {});
   worker?.terminate(); worker = null; publishLoaded(null);
+  notifyResidentModelUnloaded();
 }

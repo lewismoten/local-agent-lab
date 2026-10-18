@@ -64,8 +64,10 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
   let queueFolder: FileSystemDirectoryHandle | null = null;
   let queueOnComplete: ((path: string) => void) | null = null;
   let pumping = false;
+  let pumpTask: Promise<void> | null = null;
   let licenseTask: Promise<void> | null = null;
   let queueWrite: Promise<void> = Promise.resolve();
+  let workspaceEpoch = 0;
   const publish = (patch: Partial<ModelDownloadState>) => {
     state = { ...state, ...patch };
     listeners.forEach(listener => listener());
@@ -101,13 +103,14 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
       throw error;
     }
   };
-  const pumpQueue = async () => {
-    if (pumping || licenseTask || task || state.status !== 'idle' || state.queuePaused || !queueFolder || !queueOnComplete) return;
+  const pumpQueue = (): Promise<void> | null => {
+    if (pumping || licenseTask || task || state.status !== 'idle' || state.queuePaused || !queueFolder || !queueOnComplete) return pumpTask;
     pumping = true;
-    try {
+    pumpTask = (async () => { try {
       while (state.queue.length && !task && state.status === 'idle' && !state.queuePaused) {
         const next = state.queue[0];
         const installed = await alreadyDownloaded(queueFolder, next);
+        if (state.queuePaused) break;
         if (state.queue[0]?.url !== next.url) continue;
         if (installed) { await ensureModelLicenseFiles(queueFolder, next.url); setQueue(state.queue.slice(1)); publish({ revision: state.revision + 1 }); showToast(`${next.name} license files are ready.`); continue; }
         if (next.licenseOnly) throw new Error(`${next.name} is missing or incomplete. Its license cannot be repaired until the GGUF is present.`);
@@ -118,7 +121,8 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
     } catch (error) {
       publish({ queuePaused: true, error: error instanceof Error ? error.message : String(error) });
       showToast(`Model queue paused: ${error instanceof Error ? error.message : String(error)}`, 'error');
-    } finally { pumping = false; }
+    } finally { pumping = false; pumpTask = null; } })();
+    return pumpTask;
   };
   const processPriorityLicenses = () => {
     if (licenseTask || !queueFolder) return;
@@ -220,14 +224,16 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
       if (!task && !state.queuePaused) void pumpQueue();
     },
     async discover(folder: FileSystemDirectoryHandle) {
+      const epoch = workspaceEpoch;
       if (!queueFolder && state.status === 'idle') {
         try {
           const dir = await folder.getDirectoryHandle('models');
           const file = await (await dir.getFileHandle(QUEUE_FILE)).getFile();
-          setQueue(validQueue(JSON.parse(await file.text())));
+          const saved = validQueue(JSON.parse(await file.text()));
+          if (epoch === workspaceEpoch && !queueFolder && state.status === 'idle') setQueue(saved);
         } catch { /* A queue file is optional; the browser copy remains available. */ }
       }
-      try { recordPartials(await listPartialModels(folder)); } catch { /* Folder access can require a new user gesture after refresh. */ }
+      try { const partials = await listPartialModels(folder); if (epoch === workspaceEpoch) recordPartials(partials); } catch { /* Folder access can require a new user gesture after refresh. */ }
     },
     start(folder: FileSystemDirectoryHandle, url: string, onComplete: (path: string) => void) {
       if (task || state.status !== 'idle') return false;
@@ -269,6 +275,18 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
       return true;
     },
     pause() { publish({ queuePaused: true }); controller?.abort(); },
+    async pauseAndDetach() {
+      this.pause();
+      workspaceEpoch++;
+      await Promise.all([task, licenseTask, pumpTask]);
+      await queueWrite;
+      // The old folder keeps its own queue file. Do not carry that queue or its
+      // partial-download hint into the next workspace on this browser.
+      queueFolder = null;
+      queueOnComplete = null;
+      publish({ queue: [], progress: null, recovery: null, error: '' });
+      try { window.localStorage.removeItem(QUEUE_KEY); window.sessionStorage.removeItem(RECOVERY_KEY); } catch { /* Storage may be disabled. */ }
+    },
     async discard(folder: FileSystemDirectoryHandle, name: string) {
       if (state.status === 'discarding') return;
       const active = state.status === 'downloading' && state.name === name && task;

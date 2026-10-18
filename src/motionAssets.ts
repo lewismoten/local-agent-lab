@@ -197,5 +197,6 @@ export const motionAssetsManager = {
     next(folder);
   },
   pause() { publish({ paused: true }); controller?.abort(); },
+  async pauseAndWait() { this.pause(); await task; },
   resume(folder: FileSystemDirectoryHandle) { if (state.folder !== folder) return; publish({ paused: false, error: '' }); next(folder); },
 };

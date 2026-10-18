@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 # Private story data and uploaded reference assets
 workspace/
+/harness/
 # Keep local model weights off GitHub, even when copied into this checkout.
 models/
 /engines/
@@ -16,3 +17,5 @@ models/
 *.gguf
 /public/**/*-test
 /public/**/*-test.*
+/notes/
+!/notes/checklist.md

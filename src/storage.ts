@@ -41,6 +41,25 @@ export async function loadHandle(): Promise<FileSystemDirectoryHandle | null> {
   db.close();
   return value;
 }
+export async function clearHandle(): Promise<void> {
+  const db = await database();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete('project');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+export async function hasWritableFolderPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const access = handle as FileSystemDirectoryHandle & {
+    queryPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>;
+  };
+  if (!access.queryPermission) return true;
+  try { return await access.queryPermission({ mode: 'readwrite' }) === 'granted'; }
+  catch { return false; }
+}
 export async function ensureWritableFolder(handle: FileSystemDirectoryHandle): Promise<boolean> {
   const access = handle as FileSystemDirectoryHandle & {
     queryPermission?: (options: { mode: 'readwrite' }) => Promise<PermissionState>;
@@ -49,6 +68,22 @@ export async function ensureWritableFolder(handle: FileSystemDirectoryHandle): P
   if (!access.queryPermission) return true;
   if (await access.queryPermission({ mode: 'readwrite' }) === 'granted') return true;
   return await access.requestPermission?.({ mode: 'readwrite' }) === 'granted';
+}
+export async function browserFiles(): Promise<FileSystemDirectoryHandle | null> {
+  if (!navigator.storage?.getDirectory) return null;
+  try {
+    const root = await navigator.storage.getDirectory();
+    const folder = await root.getDirectoryHandle('local-agent-lab', { create: true });
+    // OPFS APIs vary across browsers. A real write and removal verifies the
+    // operations used by model downloads before offering browser file storage.
+    const probe = `.write-check-${crypto.randomUUID()}`;
+    const handle = await folder.getFileHandle(probe, { create: true });
+    const writer = await handle.createWritable();
+    await writer.write('ready');
+    await writer.close();
+    await folder.removeEntry(probe);
+    return folder;
+  } catch { return null; }
 }
 declare global {
   interface Window { showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<FileSystemDirectoryHandle> }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="240" viewBox="0 0 1200 240"><g transform="translate(20 20) scale(3.125)">
+  <defs><linearGradient id="signal" x2="1" y2="1"><stop stop-color="#76f5e7"/><stop offset=".65" stop-color="#7d9cf2"/><stop offset="1" stop-color="#c29cff"/></linearGradient></defs>
+  <rect width="64" height="64" rx="14" fill="#0d1d30"/>
+  <path d="M11 8h20M8 11v20M53 56H33m23-3V33" fill="none" stroke="#64eadd" stroke-width="2" opacity=".7"/>
+  <path d="M32 9 37 27 55 32 37 37 32 55 27 37 9 32 27 27Z" fill="url(#signal)"/>
+  <circle cx="32" cy="32" r="5" fill="#071320"/>
+</g><text x="260" y="147" fill="#f5f9ff" font-family="DejaVu Sans, sans-serif" font-size="82" font-weight="700" letter-spacing="-3">Local Agent Lab</text></svg>

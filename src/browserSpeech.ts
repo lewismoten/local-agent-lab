@@ -1,4 +1,4 @@
-import { withLocalModelMemory } from './localModelMemory.ts';
+import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 import { assertSpeechFiles } from './speechAssets.ts';
 import { KOKORO_BUILT_IN_VOICES, SPEECH_ENGINE_ASSETS, speechModel, type SpeechModelId } from './speechManifest.ts';
 import { unloadLocalOllama } from './localOllama.ts';
@@ -26,6 +26,7 @@ const publish = (next: Status) => { status = next; listeners.forEach(listener =>
 export const getBrowserSpeechStatus = () => status;
 export const subscribeBrowserSpeech = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 let loaded: { folder: FileSystemDirectoryHandle; model: SpeechModelId; pocket: Pocket; urls: string[] } | null = null;
+registerResidentModel('speech', () => loaded !== null || status.state === 'ready', unloadBrowserSpeech);
 let activeSpeechGeneration: { stopped: boolean; cancel: () => void; controller: AbortController } | null = null;
 export const isBrowserSpeechLoadedFrom = (folder: FileSystemDirectoryHandle, model: SpeechModelId) => status.state === 'ready' && (model === 'kokoro_q8' ? isKokoroLoadedFrom(folder) : model === 'chatterbox_turbo_q4f16' || model === 'chatterbox_q4f16' ? isChatterboxLoadedFrom(folder, model) : model === 'qwen3_tts_17b_q4' ? isQwenTtsLoadedFrom(folder) : model === 'openvoice_v2_q8' ? isOpenVoiceLoadedFrom(folder) : loaded?.folder === folder && loaded.model === model);
 const moduleUrl = (source: string) => URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
@@ -39,6 +40,7 @@ export async function unloadBrowserSpeech() {
   old?.pocket.destroy();
   for (const url of old?.urls || []) URL.revokeObjectURL(url);
   publish({ state: 'idle', model: null, message: '', voices: [] });
+  notifyResidentModelUnloaded();
 }
 
 export async function stopBrowserSpeech() {

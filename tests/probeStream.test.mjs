@@ -20,6 +20,8 @@ test('inline thinking chunks contribute to the thinking graph', async () => {
   assert.equal(updates.at(-1).responseTokens, 1);
   assert.equal(updates.at(-1).reasoningText, 'Working through it');
   assert.equal(updates.at(-1).responseText, '5 minutes');
+  assert.equal(updates[1].visibleText, '');
+  assert.equal(updates.at(-1).visibleText, '5 minutes');
 });
 
 test('diagnostic stream reports prompt and output progress and preserves final usage', async () => {
@@ -30,7 +32,8 @@ test('diagnostic stream reports prompt and output progress and preserves final u
     yield { id: 'a', created: 1, model: 'test', choices: [{ index: 0, delta: { content: ' minutes' }, finish_reason: 'stop', logprobs: null }], usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 } };
   }
   const response = await collectProbeStream(chunks(), 256, update => updates.push(update));
-  assert.deepEqual(updates[0], { promptProcessed: 7, promptTotal: 12, outputTokens: 0, reasoningTokens: 0, responseTokens: 0, maxOutputTokens: 256, outputEstimated: true, outputTokensPerSecond: 0 });
+  assert.deepEqual(updates[0], { promptProcessed: 7, promptTotal: 12, promptCachedTokens: 4, outputTokens: 0, reasoningTokens: 0, responseTokens: 0, maxOutputTokens: 256, outputEstimated: true, outputTokensPerSecond: 0, visibleText: '' });
+  assert.equal(updates.at(-1).promptCachedTokens, 4);
   assert.equal(updates.at(-1).outputTokens, 3);
   assert.equal(updates.at(-1).outputEstimated, false);
   assert.equal(updates.at(-1).responseTokens, 2);
@@ -49,6 +52,7 @@ test('diagnostic stream retains a structured tool call across chunks', async () 
   }
   const response = await collectProbeStream(chunks(), 256, update => updates.push(update));
   assert.match(updates.at(-1).responseText, /Tool: count_letters/);
+  assert.equal(updates.at(-1).visibleText, '');
   assert.equal(response.choices[0].finish_reason, 'tool_calls');
   assert.deepEqual(response.choices[0].message.tool_calls, [{ id: 'call-1', type: 'function', function: { name: 'count_letters', arguments: '{"word":"apple"}' } }]);
 });

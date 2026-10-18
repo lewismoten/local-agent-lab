@@ -1,0 +1,11 @@
+# Privacy and hosting
+
+Back to [Local Agent Lab](../README.md) · [Getting started](getting-started.md) · [Workspace guide](workspace.md)
+
+Browser model inference and project file tools run locally. API profiles contact their configured service only when you select and use them; if an API model calls a file, history, or memory tool, its result is sent back to that service so the model can continue. Use a browser model or local Ollama server when project excerpts must stay on your machine. The app does not bundle model weights or third-party engines. The optional catalog downloads pinned upstream assets and saves their license and notice files beside them. Keep those files together when carrying the workspace between machines. For text requests, Wllama is asked to reuse a matching prompt prefix while its model stays loaded; chat and diagnostics show cached prompt tokens when the runtime reports them. This runtime cache is cleared when the model is unloaded and is not written to the portable workspace.
+
+The published app shell is cached in the browser after the first online visit, including its lazy-loaded screens, so it can reopen without a network connection. The first visit reloads once after the service worker takes control so browser engines can use cross-origin isolation on GitHub Pages. This cache belongs to that browser; on a new machine, visit the site once while online. Models, engines, and workspace files remain separate from the site cache and can travel on the chosen drive.
+
+Where a browser supports writable origin private file storage, the browser workspace can also save model files and tool files without a folder picker. This storage stays in that browser and does not travel with a USB drive; connect a drive on a browser with folder access for portability. The app checks actual write and remove operations before offering this storage path.
+
+The [GitHub Pages workflow](../.github/workflows/pages.yml) builds and deploys `dist` on `main`. The Vite base path remains `/rivers-of-memory/` while the repository keeps that name. In GitHub repository settings, choose **Pages → Build and deployment → GitHub Actions**. Browser folder access requires HTTPS or localhost. The `.gitignore` excludes local workspace data, engines, and model weights from commits.

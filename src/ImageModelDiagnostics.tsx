@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BROWSER_IMAGE_MODEL_PATHS, assertBrowserImageFiles, browserImageAssets, browserImageDefaultSteps, browserImageModelLabel, browserImageOutputSize, browserImageTotal, type BrowserImageModelGroup } from './browserImageAssets';
 import { browserImagePreviewDataUrl, generateBrowserImage, setBrowserImageFolder } from './browserImage';
+import { acquireModel } from './harnessLease.ts';
 import { recordCapability } from './capabilityLedger';
 import { saveDiagnosticJson } from './diagnosticReports';
 import { inspectGreenLeafTestImage } from './imageTestQuality';
@@ -51,7 +52,10 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
         imageGeneration: { result: 'inconclusive', detail: 'Not run.', prompt: runPrompt, seed, evaluation: reference ? 'reference' : 'preview' },
       },
     };
+    let release: (() => void) | undefined;
     try {
+      setPhase('Waiting for model…');
+      release = await acquireModel(`diagnostics:image:${group}`, run.signal);
       await assertBrowserImageFiles(folder, group);
       if (run.signal.aborted) throw new DOMException('Image generation stopped.', 'AbortError');
       next.tests.files = { result: 'passed', detail: `${browserImageAssets(group).filter(asset => asset.name.endsWith('.onnx')).length} model components and the ONNX engine verified; license included.` };
@@ -94,6 +98,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
       if (controller.current === run) controller.current = null;
       try { next.savedPath = await saveDiagnosticJson(folder, path, next.checkedAt, 'image', next); }
       catch (cause) { setError(current => `${current ? `${current} ` : ''}Could not save report: ${cause instanceof Error ? cause.message : String(cause)}`); }
+      release?.();
       setReport({ ...next, tests: { ...next.tests } }); setBusy(false); setPhase('');
     }
   }

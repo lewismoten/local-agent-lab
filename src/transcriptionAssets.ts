@@ -161,7 +161,8 @@ export const transcriptionAssetsManager = {
     if (running) { await running; return this.discover(folder); }
     if (discovery) { await discovery; if (state.folder === folder) return; }
     const task = (async () => {
-      publish({ folder, installed: emptyFlags(), checked: emptyFlags(), saved: emptySaved(), sherpaArchiveReady: false, error: '' });
+      const sameFolder = state.folder === folder;
+      publish({ folder, active: null, queue: sameFolder ? state.queue : [], paused: sameFolder && state.paused, installed: emptyFlags(), checked: emptyFlags(), saved: emptySaved(), sherpaArchiveReady: false, current: '', error: '' });
       for (const kind of ['engine', ...TRANSCRIPTION_MODELS.map(model => model.id)] as TranscriptionKind[]) {
         let complete = true, bytes = 0;
         try { const dir = await transcriptionDirectory(folder, kind); for (const asset of assets(kind)) { const file = await fileAt(dir, asset.name); bytes += Math.min(asset.bytes, file?.size || 0); const valid = await verified(dir, asset); if (!valid) complete = false; if (kind === 'sherpa' && asset.name === SHERPA_ARCHIVE_NAME) publish({ sherpaArchiveReady: valid }); } if (kind === 'sherpa' && !await sherpaExtracted(folder)) complete = false; }
@@ -178,6 +179,7 @@ export const transcriptionAssetsManager = {
     publish({ queue: [...state.queue, kind] }); void next(folder);
   },
   pause() { publish({ paused: true }); aborter?.abort(); },
+  async pauseAndWait() { this.pause(); await Promise.all([running, discovery?.catch(() => {})]); },
   resume(folder: FileSystemDirectoryHandle) { if (state.folder !== folder) return; publish({ paused: false, error: '' }); void next(folder); },
   total: transcriptionTotal,
 };

@@ -1,9 +1,10 @@
 import type { ChatCompletionMessage, ChatCompletionResponse, ChatCompletionTool, Wllama } from './browserEngineTypes';
-import type { AIConfig, ChatTurn, Completion } from './ai';
+import type { AIConfig, ChatTurn, Completion, LiveCompletionProgress } from './ai';
 import { readBlob } from './storage';
+import { unsupportedToolDiagnostic } from './harnessToolDiagnostics';
 import { incompleteModels } from './modelDownload';
 import { assertModelLicenseFiles, assertVisionProjectorLicenseFiles, catalogModelForPath, hasGemmaConsent, hasQwenResearchConsent } from './modelLicenses';
-import { completedMachineConclusion, gemmaBrowserMessages, isFiveMinutesAnswer, scorePromptedSteps, scoreStructuredToolUse, qwen35ChatOptions, qwen35LoadOptions, visibleBrowserText, visibleReasoningEnvelope } from './browserInference';
+import { assertExecutableToolCalls, completedMachineConclusion, gemmaBrowserMessages, isFiveMinutesAnswer, liveBrowserAnswer, scorePromptedSteps, scoreStructuredToolUse, qwen35ChatOptions, qwen35LoadOptions, visibleBrowserText, visibleReasoningEnvelope } from './browserInference';
 import { BONSAI_2_Q2_BROWSER_WARNING, GRANITE_40_WARNING, isBonsai2BrowserUnsupported, isBonsai2Q2BrowserUnsupported, isKnownIncompatibleGranite } from './modelCompatibility';
 import { collectProbeStream, type ProbeTokenProgress } from './probeStream';
 import { GRANITE_COUNT_LETTERS_GRAMMAR, GRANITE_TOOL_TEMPERATURE, graniteToolMessages, normalizeGraniteToolResponse } from './graniteTools';
@@ -15,11 +16,13 @@ import type { PhotoKeywordResult, VisionFixture } from './visionFixtures';
 import type { CropCorners } from './visionCrop';
 import { detectThinkingSpillover, type ThinkingSpillover } from './thinkingSpillover';
 import { browserContextWindow } from './browserContext';
-import { withLocalModelMemory } from './localModelMemory.ts';
+import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
+import { createToolResultLimiter, toolResultBudget } from './toolResultBudget.ts';
 
 export type BrowserTools = {
   definitions: ChatCompletionTool[];
   execute: (name: string, args: Record<string, unknown>) => Promise<string>;
+  deferredNames?: string[];
 };
 export type BrowserModelStatus = { state: 'empty' | 'loading' | 'ready' | 'error'; path: string; message: string; contextWindow?: number; thinkingBudgetTokens?: number };
 let engine: Wllama | null = null;
@@ -28,6 +31,7 @@ let engineFolder: FileSystemDirectoryHandle | null = null;
 let nativeError = '';
 let visionProjectorLoaded = false;
 let status: BrowserModelStatus = { state: 'empty', path: '', message: 'No model loaded' };
+registerResidentModel('text', () => !!engine || hasPrismBrowserModel(), unloadBrowserModel);
 const listeners = new Set<() => void>();
 const publish = (next: BrowserModelStatus) => { status = next; listeners.forEach(listener => listener()); };
 export const getBrowserModelStatus = () => status;
@@ -126,11 +130,14 @@ async function createBrowserChatCompletion(params: BrowserChatParams, onProgress
   try {
     const graniteTools = catalogModelForPath(status.path)?.id === 'granite41-3b' && !!params.tools?.length;
     const effective = graniteTools ? graniteTransportParams(params) : params;
+    // Wllama can reuse the matching token prefix while this model remains
+    // loaded. Multimodal inputs use their own runtime path and stay uncached.
+    const wllamaOptions = { ...effective, cache_prompt: !effective.messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'image')) };
     const response = hasPrismBrowserModel()
       ? await prismChatCompletion({ ...effective, chat_template_kwargs: { ...effective.chat_template_kwargs, thinking_budget: status.thinkingBudgetTokens || 0 } }, onProgress)
       : onProgress
-        ? await collectProbeStream(await engine!.createChatCompletion({ ...effective, stream: true, return_progress: true }), params.max_tokens, onProgress)
-        : await engine!.createChatCompletion(effective);
+        ? await collectProbeStream(await engine!.createChatCompletion({ ...wllamaOptions, stream: true, return_progress: true }), params.max_tokens, onProgress)
+        : await engine!.createChatCompletion(wllamaOptions);
     if (!graniteTools) return response;
     const rawContent = response.choices[0]?.message.content || '';
     return { ...normalizeGraniteToolResponse(response, params.tools || []), rawContent };
@@ -310,10 +317,12 @@ export async function unloadBrowserModel() {
   engineFolder = null;
   nativeError = '';
   publish({ state: 'empty', path: '', message: 'No model loaded' });
-  await oldEngine?.exit().catch(() => {});
-  if (wllamaWasmUrl) URL.revokeObjectURL(wllamaWasmUrl);
-  wllamaWasmUrl = null;
-  await unloadPrismBrowserModel().catch(() => {});
+  try {
+    await oldEngine?.exit().catch(() => {});
+    if (wllamaWasmUrl) URL.revokeObjectURL(wllamaWasmUrl);
+    wllamaWasmUrl = null;
+    await unloadPrismBrowserModel().catch(() => {});
+  } finally { notifyResidentModelUnloaded(); }
 }
 
 export function loadBrowserModel(folder: FileSystemDirectoryHandle, path: string, contextWindow: number, thinkingBudgetTokens = 0, withVision = false) {
@@ -416,10 +425,10 @@ async function quickBrowserModelCheckInternal(config: AIConfig): Promise<Complet
   return { text: answer, inputTokens: response.usage?.prompt_tokens, outputTokens: response.usage?.completion_tokens };
 }
 
-export function browserComplete(config: AIConfig, turns: ChatTurn[], system: string, signal?: AbortSignal, tools?: BrowserTools): Promise<Completion> {
-  return withLocalModelMemory(() => browserCompleteInternal(config, turns, system, signal, tools));
+export function browserComplete(config: AIConfig, turns: ChatTurn[], system: string, signal?: AbortSignal, tools?: BrowserTools, onTokenProgress?: (progress: LiveCompletionProgress) => void, request?: { maxOutputTokens: number; disableThinking: boolean }): Promise<Completion> {
+  return withLocalModelMemory(() => browserCompleteInternal(config, turns, system, signal, tools, onTokenProgress, request));
 }
-async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], system: string, signal?: AbortSignal, tools?: BrowserTools): Promise<Completion> {
+async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], system: string, signal?: AbortSignal, tools?: BrowserTools, onTokenProgress?: (progress: LiveCompletionProgress) => void, request?: { maxOutputTokens: number; disableThinking: boolean }): Promise<Completion> {
   if ((!engine && !hasPrismBrowserModel()) || status.state !== 'ready' || status.path !== config.model) throw new Error('Load the selected GGUF model in Settings & AI before chatting.');
   if (!engineFolder) throw new Error('Reconnect the model folder before using this GGUF.');
   try {
@@ -435,33 +444,63 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
   if (status.contextWindow !== browserContextWindow(config.model, config.contextWindow)) throw new Error('The context window changed. Reload the browser model in Settings & AI.');
   const thinkingBudget = browserThinkingBudget(config);
   if ((status.thinkingBudgetTokens ?? 0) !== thinkingBudget) throw new Error('The thinking setting changed. Reload the browser model in Settings & AI.');
+  const outputLimit = request ? Math.max(32, Math.min(config.maxOutputTokens, Math.floor(request.maxOutputTokens))) : config.maxOutputTokens;
+  const thinkingOptions = request?.disableThinking ? browserThinkingOptions({ ...config, browserThinkingMode: 'none' }) : browserThinkingOptions(config);
   // Gemma 3's chat format has user/model turns, with instructions in the first user turn.
   const messages: ChatCompletionMessage[] = catalogModelForPath(status.path)?.id === 'gemma3-1b'
     ? gemmaBrowserMessages(system, turns)
     : [{ role: 'system', content: system }, ...turns];
   const toolEvents: string[] = [];
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+  const limitToolResult = createToolResultLimiter(tools ? toolResultBudget(status.contextWindow || browserContextWindow(config.model, config.contextWindow), outputLimit, system, turns, tools.definitions) : 0);
   for (let round = 0; round < 4; round++) {
+    onTokenProgress?.({ promptProcessed: 0, promptTotal: 0, outputTokens: 0, maxOutputTokens: outputLimit, outputTokensPerSecond: 0, visibleText: '' });
     const response = await createBrowserChatCompletion({
-      messages, max_tokens: config.maxOutputTokens, abortSignal: signal,
+      messages, max_tokens: outputLimit, abortSignal: signal,
       ...(catalogModelForPath(status.path)?.id === 'qwen35-2b' ? qwen35ChatOptions : {}),
-      ...browserThinkingOptions(config),
+      ...thinkingOptions,
       ...(tools && round < 3 ? { tools: tools.definitions, tool_choice: 'auto' as const } : {}),
-    });
+    }, onTokenProgress ? progress => onTokenProgress({
+      promptProcessed: progress.promptProcessed,
+      promptTotal: progress.promptTotal,
+      promptCachedTokens: progress.promptCachedTokens,
+      outputTokens: progress.outputTokens,
+      maxOutputTokens: progress.maxOutputTokens,
+      outputTokensPerSecond: progress.outputTokensPerSecond,
+      visibleText: liveBrowserAnswer(progress.visibleText || ''),
+    }) : undefined);
+    if (response.usage?.prompt_tokens !== undefined) inputTokens = (inputTokens || 0) + response.usage.prompt_tokens;
+    if (response.usage?.completion_tokens !== undefined) outputTokens = (outputTokens || 0) + response.usage.completion_tokens;
     const choice = response.choices[0];
     if (!choice) throw new Error('The browser model returned no response.');
     if (response.thinkingSpillover) throw new Error('The model continued its reasoning in the visible answer after reaching the thinking cap. Try Light or None, or another model.');
     const calls = choice.message.tool_calls || [];
+    assertExecutableToolCalls(calls.length, choice.finish_reason, signal);
     if (calls.length && tools && round < 3) {
+      const deferred = calls.filter(call => tools.deferredNames?.includes(call.function.name));
+      if (deferred.length) {
+        const deferredToolCalls = deferred.slice(0, 2).map(call => {
+          const parsed = JSON.parse(call.function.arguments || '{}') as unknown;
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Tool arguments must be an object.');
+          return { name: call.function.name, arguments: parsed as Record<string, unknown> };
+        });
+        return { text: visibleBrowserText(choice.message.content), inputTokens, outputTokens, toolEvents, deferredToolCalls };
+      }
       messages.push(choice.message);
       for (const call of calls.slice(0, 3)) {
+        const unsupported = !tools.definitions.some(item => item.function.name === call.function.name);
         let result: string;
         try {
           const parsed = JSON.parse(call.function.arguments || '{}');
           if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Tool arguments must be an object.');
           result = await tools.execute(call.function.name, parsed);
-        } catch (error) { result = `Tool error: ${error instanceof Error ? error.message : String(error)}`; }
-        result = result.slice(0, 12000);
-        toolEvents.push(`${call.function.name}: ${result}`);
+        } catch (error) {
+          if (signal?.aborted) throw error;
+          result = `Tool error: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        result = limitToolResult(result);
+        toolEvents.push(unsupported ? `${unsupportedToolDiagnostic(call.function.name, call.function.arguments)} · ${result}` : `${call.function.name}: ${result}`);
         messages.push({ role: 'tool', tool_call_id: call.id, content: result });
       }
       continue;
@@ -475,7 +514,7 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
           : `The model stopped with ${choice.finish_reason || 'no finish reason'} and no visible answer.`;
       throw new Error(`${detail}${tokens ? ` ${tokens} tokens were generated.` : ''} Try loading the model again; if this persists, choose another browser model.`);
     }
-    return { text: answer, inputTokens: response.usage?.prompt_tokens, outputTokens: response.usage?.completion_tokens, toolEvents };
+    return { text: answer, inputTokens, outputTokens, toolEvents };
   }
   throw new Error('The browser model reached the tool-call limit. Ask a narrower question.');
 }

@@ -144,7 +144,7 @@ export const needleAssetsManager = {
     const saved = sameFolder ? { ...state.saved } : { engine: 0, needle: 0, needle2: 0, needle3: 0 };
     const checked = emptyChecked();
     const errors: string[] = [];
-    publish({ folder, installed, present, verification, saved, checked, error: '' });
+    publish({ folder, installed, present, verification, saved, checked, queue: sameFolder ? state.queue : [], queuePaused: sameFolder && state.queuePaused, active: null, status: sameFolder && state.queuePaused ? 'paused' : 'idle', error: '', errorGroup: null });
     const promise = (async () => { for (const group of groups) {
       try {
         if (group === 'engine') {
@@ -171,7 +171,7 @@ export const needleAssetsManager = {
       if (state.folder !== folder) return;
       publish({ installed: { ...installed }, checked: { ...checked }, present: { ...present }, verification: { ...verification }, saved: { ...saved } });
     }
-    if (state.folder === folder) publish({ installed, checked, present, verification, saved, queue: sameFolder ? state.queue : [], queuePaused: sameFolder && state.queuePaused, status: errors.length ? 'error' : 'idle', error: errors.join('; '), errorGroup: null, revision: state.revision + 1 });
+    if (state.folder === folder) publish({ installed, checked, present, verification, saved, queue: sameFolder ? state.queue : [], queuePaused: sameFolder && state.queuePaused, status: errors.length ? 'error' : sameFolder && state.queuePaused ? 'paused' : 'idle', error: errors.join('; '), errorGroup: null, revision: state.revision + 1 });
     })();
     discovery = { folder, promise };
     try { await promise; }
@@ -194,6 +194,7 @@ export const needleAssetsManager = {
     startNext(folder);
   },
   pause() { if (controller) { publish({ queuePaused: true }); controller.abort(); } },
+  async pauseAndWait() { this.pause(); await Promise.all([activeTask, discovery?.promise.catch(() => {})]); },
   resume(folder: FileSystemDirectoryHandle) {
     if (state.folder !== folder) return;
     publish({ queuePaused: false, status: 'idle', error: '', errorGroup: null });

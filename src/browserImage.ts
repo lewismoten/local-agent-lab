@@ -1,6 +1,6 @@
 import { assertBrowserImageFiles, browserImageDefaultGuidance, browserImageDefaultSteps, type BrowserImageModelGroup } from './browserImageAssets';
 import { clipTokenizer } from './clipTokenizer';
-import { withLocalModelMemory } from './localModelMemory.ts';
+import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 import { unloadLocalOllama } from './localOllama.ts';
 import type { Ort, TinyPipeline } from './tinySdPipeline.ts';
 
@@ -30,6 +30,7 @@ type RuntimeGlobal = typeof globalThis & {
 
 let folder: FileSystemDirectoryHandle | null = null;
 let pipeline: Pipeline | null = null;
+registerResidentModel('image', () => pipeline !== null, unloadBrowserImageModel);
 let loadedFor: FileSystemDirectoryHandle | null = null;
 let loadedGroup: BrowserImageModelGroup | null = null;
 let loading: Promise<Pipeline> | null = null;
@@ -49,7 +50,7 @@ const revokeUrls = () => { for (const url of urls.splice(0)) URL.revokeObjectURL
 export function setBrowserImageFolder(next: FileSystemDirectoryHandle | null) {
   if (folder === next) return;
   folder = next;
-  void withLocalModelMemory(() => unloadBrowserImageModel());
+  void withLocalModelMemory(() => unloadBrowserImageModel(), { claimResident: false });
 }
 
 export async function unloadBrowserImageModel() {
@@ -64,7 +65,8 @@ export async function unloadBrowserImageModel() {
       globalRuntime.__riversSdTokenizer = undefined;
     }
   });
-  await releasing;
+  try { await releasing; }
+  finally { notifyResidentModelUnloaded(); }
 }
 
 async function load(folderForLoad: FileSystemDirectoryHandle, group: BrowserImageModelGroup, progress?: (message: string) => void): Promise<Pipeline> {

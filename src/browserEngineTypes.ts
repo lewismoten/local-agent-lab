@@ -20,7 +20,7 @@ export type ChatCompletionChunk = {
 };
 export type BrowserChatOptions = {
   messages: ChatCompletionMessage[]; max_tokens: number; abortSignal?: AbortSignal;
-  stream?: boolean; return_progress?: boolean; tools?: ChatCompletionTool[]; tool_choice?: 'auto' | 'required';
+  stream?: boolean; return_progress?: boolean; cache_prompt?: boolean; tools?: ChatCompletionTool[]; tool_choice?: 'auto' | 'required';
   chat_template_kwargs?: Record<string, unknown>; temperature?: number; top_p?: number; min_p?: number; seed?: number; grammar?: string;
 };
 export type BrowserModelMetadata = { meta: Record<string, string>; hparams: { nCtxTrain: number; [key: string]: unknown } };

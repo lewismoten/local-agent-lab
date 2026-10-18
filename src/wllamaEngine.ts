@@ -16,6 +16,7 @@ let state: DownloadState = { status: 'idle', installed: false, bytes: 0, total: 
 const listeners = new Set<() => void>();
 let controller: AbortController | null = null;
 let active: Promise<void> | null = null;
+let discoveryId = 0;
 const publish = (patch: Partial<DownloadState>) => { state = { ...state, ...patch }; listeners.forEach(listener => listener()); };
 export const getWllamaEngineDownload = () => state;
 export const subscribeWllamaEngineDownload = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -40,11 +41,14 @@ async function transfer(folder: FileSystemDirectoryHandle, signal: AbortSignal) 
 export const wllamaEngineManager = {
   async discover(folder: FileSystemDirectoryHandle) {
     if (active) return;
+    const id = ++discoveryId;
     try {
       const installed = (await engineAssetFiles(folder, 'Wllama', WLLAMA_ASSETS, validFile)).every(Boolean);
       const queued = !!await maybeEngineFile(folder, 'Wllama', queueFile);
-      publish({ installed, bytes: await engineSavedBytes(folder, 'Wllama', WLLAMA_ASSETS), status: installed ? 'idle' : queued ? 'paused' : 'idle', currentAsset: '', error: '', revision: state.revision + 1 });
-    } catch (error) { publish({ status: 'error', error: error instanceof Error ? error.message : String(error) }); }
+      const bytes = await engineSavedBytes(folder, 'Wllama', WLLAMA_ASSETS);
+      if (id !== discoveryId || active) return;
+      publish({ installed, bytes, status: installed ? 'idle' : queued ? 'paused' : 'idle', currentAsset: '', error: '', revision: state.revision + 1 });
+    } catch (error) { if (id === discoveryId) publish({ status: 'error', installed: false, bytes: 0, error: error instanceof Error ? error.message : String(error), revision: state.revision + 1 }); }
   },
   async queue(folder: FileSystemDirectoryHandle) {
     if (state.installed || active) return;
@@ -70,6 +74,8 @@ export const wllamaEngineManager = {
     await active;
   },
   pause() { controller?.abort(); },
+  async pauseAndWait() { controller?.abort(); await active; },
+  resetWorkspace() { discoveryId++; publish({ status: 'idle', installed: false, bytes: 0, currentAsset: '', error: '', revision: state.revision + 1 }); },
   async remove(folder: FileSystemDirectoryHandle) {
     controller?.abort();
     await active;

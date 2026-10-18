@@ -266,7 +266,7 @@ export const browserImageAssetsManager = {
       const progress = state.folder === folder ? { ...state.saved } : emptyProgress();
       const checked = state.folder === folder ? { ...state.checked } : emptyGroups();
       const sameFolder = state.folder === folder;
-      publish({ folder, installed, saved: progress, checked, legacyInstalled: sameFolder && state.legacyInstalled, updateAvailable: sameFolder && state.updateAvailable });
+      publish({ folder, installed, saved: progress, checked, queue: sameFolder ? state.queue : [], active: null, paused: sameFolder && state.paused, current: '', error: '', legacyInstalled: sameFolder && state.legacyInstalled, updateAvailable: sameFolder && state.updateAvailable });
       for (const group of ['engine', ...BROWSER_IMAGE_GROUPS] as const) {
         try {
           const dir = await browserImageDirectory(folder, group);
@@ -300,6 +300,7 @@ export const browserImageAssetsManager = {
     startNext(folder);
   },
   pause() { publish({ paused: true }); controller?.abort(); },
+  async pauseAndWait() { this.pause(); await Promise.all([task, discovery?.promise.catch(() => {})]); },
   resume(folder: FileSystemDirectoryHandle) { if (state.folder !== folder) return; publish({ paused: false, error: '' }); startNext(folder); },
 };
 export async function assertBrowserOnnxEngineFiles(folder: FileSystemDirectoryHandle) {

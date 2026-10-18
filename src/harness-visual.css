@@ -1,0 +1,576 @@
+/* A quiet signal layer around the working surfaces. */
+.harness {
+  --h-electric: #62f2e5;
+  --h-rose: #ff8db6;
+}
+
+.harness-main {
+  background:
+    radial-gradient(circle at 77% 7%, #28617b45 0, transparent 32%),
+    radial-gradient(circle at 11% 86%, #56317b3d 0, transparent 38%),
+    linear-gradient(150deg, #081321, #070d1a 58%, #0e1126);
+}
+
+/* A quiet circuit pattern frames the workspace without sitting behind prose. */
+.harness-sidebar::before {
+  background:
+    radial-gradient(circle at 29px 135px, #83f9e575 0 2px, transparent 3px),
+    radial-gradient(circle at 234px 368px, #b6a0ff70 0 2px, transparent 3px),
+    linear-gradient(90deg, transparent 28px, #71eadc1b 29px, transparent 30px) 0 110px / 100% 150px no-repeat,
+    repeating-linear-gradient(0deg, transparent 0 47px, #7bc8dc08 48px),
+    linear-gradient(145deg, #54e8dd0c, transparent 35%, #a078ee0e);
+}
+
+.harness-overline { text-shadow: 0 0 12px #e4bb8333; }
+.harness-heading h1, .harness-chat-header h1 { text-wrap: balance; }
+
+.harness-topbar,
+.harness-chat-header,
+.harness-compose,
+.harness-dialog {
+  backdrop-filter: blur(18px);
+}
+
+.harness-top-actions {
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid #42677b;
+  border-radius: 7px;
+  background: linear-gradient(100deg, #123145ad, #151e35ad);
+  box-shadow: inset 0 1px #c5fff118, 0 0 18px #55e8d610;
+}
+
+/* Keep model selection compact and visually tied to the conversation. */
+.harness-model-controls .harness-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid #42677b;
+  border-radius: 8px;
+  color: var(--h-electric);
+  background: linear-gradient(135deg, #183449, #14243b);
+  box-shadow: inset 0 1px #d5ffff12, 0 5px 16px #02091648;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.harness-model-controls .harness-control:nth-child(2) { color: #c3a9ff; }
+.harness-model-controls .harness-control:hover,
+.harness-model-controls .harness-control:focus-within {
+  border-color: #7bece1;
+  box-shadow: inset 0 1px #d5ffff24, 0 0 0 2px #69ecdf19;
+}
+.harness-model-controls .harness-control svg { flex: none; filter: drop-shadow(0 0 6px currentColor); }
+.harness-model-controls .harness-control select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 34px;
+  padding: 0 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--h-text);
+  font-size: 11px;
+}
+.harness-model-controls .harness-control:first-child { width: min(220px, 25vw); }
+.harness-model-controls .harness-control:nth-child(2) { width: 138px; }
+.harness-model-controls .harness-control select:focus-visible { box-shadow: none; }
+
+.harness-signal-bars {
+  display: inline-flex;
+  align-items: end;
+  gap: 2px;
+  height: 15px;
+  margin-right: 3px;
+}
+
+.harness-signal-bars i {
+  display: block;
+  width: 2px;
+  height: 40%;
+  border-radius: 2px;
+  background: var(--h-electric);
+  box-shadow: 0 0 6px #62f2e588;
+  animation: harness-signal-bars 1.35s ease-in-out infinite alternate;
+}
+
+.harness-signal-bars i:nth-child(2) { height: 75%; animation-delay: -.45s; }
+.harness-signal-bars i:nth-child(3) { height: 100%; animation-delay: -.8s; }
+.harness-signal-bars i:nth-child(4) { height: 60%; animation-delay: -.25s; }
+
+.harness-brand-mark {
+  position: relative;
+  overflow: hidden;
+}
+
+.harness-brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -55%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 35%, #ffffff80 50%, transparent 65%);
+  transform: translateX(-110%) rotate(22deg);
+  animation: harness-mark-glint 10s ease-in-out infinite;
+}
+
+.harness-workspace,
+.harness-project-select,
+.harness-conversations {
+  min-width: 0;
+}
+
+.harness-workspace .harness-overline::before,
+.harness-project-select .harness-overline::before,
+.harness-section-head .harness-overline::before {
+  content: '◈';
+  margin-right: 7px;
+  color: var(--h-electric);
+  text-shadow: 0 0 8px #62f2e588;
+}
+
+.harness-storage-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  color: var(--h-muted);
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.harness-session,
+.harness-nav button,
+.harness-launch-grid button,
+.harness-card,
+.harness-results button {
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.harness-session:hover,
+.harness-session:focus-within {
+  border-color: #3b7785;
+  background: #1a3447;
+}
+
+.harness-chat-messages {
+  background-image:
+    radial-gradient(circle at 48% 6%, #28637b1e 0, transparent 40%),
+    repeating-linear-gradient(90deg, transparent 0 95px, #86e6ec06 96px);
+}
+
+.harness-message.assistant .harness-message-body {
+  border-left: 2px solid #73f0df77;
+  padding-left: 13px;
+  background: linear-gradient(90deg, #5bdfd910, transparent 50%);
+}
+
+.harness-message.tool .harness-message-body {
+  border-left: 2px solid #ffd08c88;
+  padding-left: 13px;
+  background: linear-gradient(90deg, #ffd08c0d, transparent 50%);
+}
+
+.harness-message-content a { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.harness-message-content blockquote {
+  margin: 10px 0;
+  padding: 4px 14px;
+  border-left: 2px solid #b99aff;
+  color: #c8d7eb;
+  background: #b99aff0c;
+}
+
+.harness-message-avatar {
+  border: 1px solid #9cfff089;
+  box-shadow: 0 0 0 4px #56ebdb0c, 0 0 15px #56ebdb24;
+}
+
+.harness-message.user .harness-message-avatar { border-color: #c9a7ff8c; box-shadow: 0 0 14px #b595ff31; }
+.harness-message.tool .harness-message-avatar { border-color: #ffd09d8c; box-shadow: 0 0 14px #ffd09d20; }
+
+.harness-message.user .harness-message-body {
+  background: linear-gradient(130deg, #222d4d, #163247);
+  box-shadow: inset 0 1px #dfd1ff12, 0 10px 24px #02091740;
+}
+
+.harness-welcome {
+  outline: 1px solid #72e9df1e;
+  outline-offset: 6px;
+}
+
+.harness-welcome .harness-starter {
+  margin: 19px 0 11px;
+  text-align: left;
+}
+
+.harness-welcome .harness-starter p {
+  max-width: none;
+  margin: 2px 0 8px;
+}
+
+.harness-welcome .harness-primary,
+.harness-welcome .harness-secondary {
+  position: relative;
+  overflow: hidden;
+}
+
+.harness-welcome .harness-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, #ffffff73 50%, transparent 65%);
+  transform: translateX(-130%);
+  transition: transform .6s ease;
+}
+
+.harness-welcome .harness-primary:hover::after { transform: translateX(130%); }
+
+.harness-launch-grid button { position: relative; overflow: hidden; }
+.harness-launch-grid button::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 38%;
+  height: 2px;
+  background: linear-gradient(90deg, #75f5e7, transparent);
+  opacity: .5;
+  transition: width .24s ease, opacity .24s ease;
+}
+.harness-launch-grid button:nth-child(2)::before { background: linear-gradient(90deg, #c5a5ff, transparent); }
+.harness-launch-grid button:nth-child(3)::before { background: linear-gradient(90deg, #ffd09a, transparent); }
+.harness-launch-grid button:hover::before,
+.harness-launch-grid button:focus-visible::before { width: 100%; opacity: 1; }
+
+.harness-compose { position: relative; }
+.harness-compose::before {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #62f2e569 32%, #bd9dff52 72%, transparent);
+  opacity: .5;
+  transition: opacity .24s ease, box-shadow .24s ease;
+}
+.harness-compose:focus-within::before { opacity: 1; box-shadow: 0 0 14px #62f2e566; }
+.harness-compose .harness-stop { min-width: 76px; min-height: 34px; padding: 6px 9px; }
+.harness-compose .harness-stop:disabled { cursor: progress; opacity: .72; }
+
+.harness-page .harness-heading {
+  background: linear-gradient(90deg, #122b3a54, transparent 80%);
+  border-radius: 7px 7px 0 0;
+}
+
+.harness-models :is(.model-catalog-table, .engine-table, .voice-table) tbody tr {
+  transition: background-color .18s ease, box-shadow .18s ease;
+}
+
+.harness-models :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover {
+  box-shadow: inset 2px 0 var(--h-electric);
+}
+
+.harness-agent-templates .harness-card:nth-child(3n + 1) { background-image: radial-gradient(circle at 100% 0, #4be4d319, transparent 48%); }
+.harness-agent-templates .harness-card:nth-child(3n + 2) { background-image: radial-gradient(circle at 100% 0, #ad91f71c, transparent 48%); }
+.harness-agent-templates .harness-card:nth-child(3n) { background-image: radial-gradient(circle at 100% 0, #f1b68516, transparent 48%); }
+
+.harness-card:focus-within, .harness-results button:focus-visible {
+  border-color: #79eee2;
+  box-shadow: 0 0 0 1px #79eee266, 0 0 28px #5bded21c;
+}
+
+.harness-file-empty {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  min-height: 235px;
+  padding: 24px;
+  text-align: center;
+  color: var(--h-muted);
+}
+
+.harness-file-empty-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 106px;
+  height: 96px;
+  margin-bottom: 14px;
+  color: #a8fff1;
+  background: radial-gradient(circle, #45e6db20, transparent 69%);
+}
+
+.harness-file-empty-art::before,
+.harness-file-empty-art::after {
+  content: '';
+  position: absolute;
+  width: 67px;
+  height: 67px;
+  border: 1px dashed #72ebdb72;
+  border-radius: 50%;
+  animation: harness-empty-orbit 18s linear infinite;
+}
+
+.harness-file-empty-art::after {
+  width: 89px;
+  height: 89px;
+  border-color: #ad9afc45;
+  animation-direction: reverse;
+  animation-duration: 26s;
+}
+
+.harness-file-empty-art span {
+  position: absolute;
+  width: 38px;
+  height: 45px;
+  border: 1px solid #6fe9db8f;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #1a5260, #18304b);
+  box-shadow: 0 0 19px #61e7dc24;
+  transform: translate(8px, 2px) rotate(10deg);
+}
+
+.harness-file-empty-art span:nth-child(2) { transform: translate(-8px, -2px) rotate(-9deg); border-color: #ad9afc8f; }
+.harness-file-empty-art span:nth-child(3) { transform: translate(0, 1px); border-color: #a4fff1; }
+.harness-file-empty-art svg { position: relative; z-index: 1; filter: drop-shadow(0 0 8px #78f4e5); }
+.harness-file-empty strong { color: var(--h-text); font-size: 14px; }
+.harness-file-empty p { max-width: 220px; margin: 5px 0 0; font-size: 11px; line-height: 1.5; }
+
+@keyframes harness-empty-orbit { to { transform: rotate(360deg); } }
+
+@keyframes harness-signal-bars {
+  to { transform: scaleY(.35); opacity: .45; }
+}
+
+@keyframes harness-mark-glint {
+  0%, 64%, 100% { transform: translateX(-110%) rotate(22deg); }
+  78% { transform: translateX(110%) rotate(22deg); }
+}
+
+@media (max-width: 700px) {
+  .harness-top-actions { padding: 0 7px; }
+  .harness-signal-bars { display: none; }
+  .harness-welcome { outline-offset: 3px; }
+  .harness-model-controls .harness-control:first-child { flex: 1; width: auto; }
+  .harness-model-controls .harness-control:nth-child(2) { flex: none; width: 122px; }
+}
+
+@media (max-width: 390px) {
+  .harness-model-controls .harness-control:nth-child(2) { width: 105px; }
+  .harness-model-controls .harness-control { gap: 4px; padding-inline: 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness-signal-bars i,
+  .harness-brand-mark::after,
+  .harness-file-empty-art::before,
+  .harness-file-empty-art::after { animation: none; }
+  .harness-brand-mark::after { display: none; }
+  .harness-welcome .harness-primary::after { transition: none; }
+  .harness-launch-grid button::before,
+  .harness-compose::before { transition: none; }
+}
+
+/* Night console: decorative light stays on the chrome, away from long text. */
+.harness {
+  --h-bg: #060a13;
+  --h-panel: #0e1929;
+  --h-panel-2: #142439;
+  --h-line: #314b65;
+  --h-text: #f3f8ff;
+  --h-muted: #aec0d4;
+  --h-cyan: #78f4e7;
+  --h-violet: #c4a7ff;
+  color-scheme: dark;
+}
+
+.harness-main {
+  background:
+    radial-gradient(ellipse 65% 50% at 100% 0%, #3a2b7547, transparent 72%),
+    radial-gradient(ellipse 56% 70% at 0% 100%, #06666b2e, transparent 72%),
+    linear-gradient(145deg, #0a1322 0%, #070c19 57%, #101026 100%);
+}
+
+.harness-main::before {
+  opacity: .9;
+  background:
+    linear-gradient(90deg, transparent 24px, #75d8ed0a 25px, transparent 26px),
+    linear-gradient(transparent 24px, #75d8ed0a 25px, transparent 26px),
+    radial-gradient(circle at 75% 25%, #8ef5ee22 0 1px, transparent 2px);
+  background-size: 50px 50px, 50px 50px, 100px 100px;
+  mask-image: linear-gradient(#000a, transparent 87%);
+}
+
+.harness-sidebar {
+  background:
+    radial-gradient(circle at -20% 5%, #22697a50, transparent 33%),
+    radial-gradient(circle at 120% 90%, #7344a33a, transparent 42%),
+    linear-gradient(180deg, #101b30, #080e1b 70%);
+  border-right-color: #59748b;
+}
+
+.harness-brand-mark,
+.harness-welcome .harness-signal-core {
+  box-shadow: 0 0 0 1px #c8fff2a3, 0 0 28px #60ebdf80, 0 0 64px #997bff38;
+}
+
+.harness-topbar {
+  box-shadow: inset 0 1px #abfbef0d, 0 8px 28px #01040daa;
+}
+
+.harness-top-actions {
+  border-color: #5b8b9a;
+  background: linear-gradient(115deg, #153342d9, #211f3bd9);
+  box-shadow: inset 0 1px #c9fff526, 0 0 20px #5be5d519;
+}
+
+/* Moving bars indicate real work. The idle state is still visible. */
+.harness-signal-bars i { animation: none; opacity: .54; }
+.harness.is-working .harness-signal-bars i { animation: harness-signal-bars 1.05s ease-in-out infinite alternate; opacity: 1; }
+.harness.is-working .harness-signal-bars i:nth-child(2) { animation-delay: -.4s; }
+.harness.is-working .harness-signal-bars i:nth-child(3) { animation-delay: -.75s; }
+.harness.is-working .harness-signal-bars i:nth-child(4) { animation-delay: -.2s; }
+
+.harness-chat-header {
+  background:
+    radial-gradient(ellipse 35% 90% at 94% 15%, #7952ab27, transparent 82%),
+    linear-gradient(100deg, #101f32ed, #111c30e8 60%, #1b1b36e8);
+  box-shadow: inset 0 1px #c5fff012;
+}
+
+.harness-chat-header::after {
+  content: '';
+  position: absolute;
+  right: 22px;
+  bottom: 0;
+  width: min(240px, 28%);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #b892ffb0, #79f4e7);
+  box-shadow: 0 0 13px #b892ff91;
+  pointer-events: none;
+}
+
+.harness-welcome {
+  border-color: #82aeb7;
+  background:
+    radial-gradient(circle at 50% 15%, #2a71805c, transparent 42%),
+    radial-gradient(circle at 100% 100%, #7a489c45, transparent 43%),
+    linear-gradient(150deg, #182b42, #0d192e 65%);
+  box-shadow: 0 30px 90px #01040dd9, inset 0 1px #d3fff33b, 0 0 0 7px #55eadb0a, 0 0 64px #a87aff27;
+}
+
+.harness-welcome::before { border-style: solid; border-color: #8af9e57a; }
+.harness-welcome .harness-signal-art { filter: drop-shadow(0 0 32px #63f4e452); }
+
+.harness-nav button.active,
+.harness-session.active {
+  box-shadow: inset 3px 0 #87fff0, 0 0 24px #62f4e51e;
+}
+
+.harness-nav button.active::after {
+  box-shadow: 0 0 15px var(--h-cyan), 0 0 28px #8f82ff;
+}
+
+.harness-session:focus-within,
+.harness-nav button:focus-visible,
+.harness-launch-grid button:focus-visible {
+  outline: 2px solid var(--h-cyan);
+  outline-offset: 2px;
+}
+
+.harness-compose-box {
+  border-color: #5b8296;
+  background: linear-gradient(145deg, #1a3047, #13233a 80%);
+  box-shadow: inset 0 1px #d1fff51c, 0 14px 42px #010610a8;
+}
+
+.harness-compose-box:focus-within {
+  border-color: #8dfff1;
+  box-shadow: 0 0 0 3px #6bead52d, 0 0 36px #5cebd31e, 0 14px 42px #010610a8;
+}
+
+.harness-generating {
+  width: fit-content;
+  min-height: 34px;
+  margin: 0 auto 15px;
+  padding: 6px 13px;
+  border: 1px solid #5a958f;
+  border-radius: 99px;
+  background: linear-gradient(100deg, #153b43e8, #191e3ce8);
+  box-shadow: inset 0 1px #b8fff125, 0 0 22px #72f5e625;
+  font: 700 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+}
+
+.harness-live-message .harness-message-body {
+  min-height: 42px;
+  border-left-color: #8af9eb;
+}
+
+.harness-live-message .harness-message-meta span {
+  color: #b8fff2;
+  background: #17484d;
+}
+
+.harness-live-content {
+  overflow-wrap: anywhere;
+}
+
+.harness-live-content::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: -.2em;
+  background: var(--h-cyan);
+  box-shadow: 0 0 10px var(--h-cyan);
+  animation: harness-live-cursor .95s steps(1, end) infinite;
+}
+
+@keyframes harness-live-cursor { 50% { opacity: 0; } }
+
+.harness-page .harness-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #42677a;
+}
+
+.harness-page .harness-heading::after {
+  bottom: -1px;
+  width: min(330px, 54%);
+  height: 2px;
+  box-shadow: 0 0 13px #9feee6a1;
+}
+
+.harness-page .harness-card,
+.harness-results button,
+.harness-model-quick,
+.harness-preferences {
+  border-color: #3b6077;
+  box-shadow: inset 0 1px #d9fff014, 0 16px 40px #0106115e;
+}
+
+.harness-model-controls .harness-control,
+.harness-icon,
+.harness-secondary {
+  border-color: #527b90;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .harness-page .harness-card:hover,
+  .harness-results button:hover { transform: translateY(-3px); box-shadow: inset 0 1px #d9fff02b, 0 20px 45px #010510a8, 0 0 25px #70f2e21f; }
+  .harness-nav button:hover { transform: translateX(3px); }
+}
+
+@media (max-width: 700px) {
+  .harness-chat-header::after { width: 90px; }
+  .harness-welcome { box-shadow: 0 20px 48px #01040dc2, inset 0 1px #d3fff33b; }
+  .harness-top-actions { min-width: 30px; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness.is-working .harness-signal-bars i { animation: none; }
+  .harness-live-content::after { animation: none; }
+  .harness-page .harness-card:hover,
+  .harness-results button:hover,
+  .harness-nav button:hover { transform: none; }
+}

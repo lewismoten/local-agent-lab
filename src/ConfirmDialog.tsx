@@ -1,18 +1,20 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 type Confirmation = { message: string; title: string; confirmLabel: string; destructive: boolean };
-type ConfirmOptions = Partial<Omit<Confirmation, 'message'>>;
+type ConfirmOptions = Partial<Omit<Confirmation, 'message'>> & { signal?: AbortSignal };
 type Confirm = (message: string, options?: ConfirmOptions) => Promise<boolean>;
 const Context = createContext<Confirm | null>(null);
 
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const resolve = useRef<((accepted: boolean) => void) | null>(null);
+  const removeAbortListener = useRef<(() => void) | null>(null);
   const [pending, setPending] = useState<Confirmation | null>(null);
   useEffect(() => {
     if (pending && !dialog.current?.open) dialog.current?.showModal();
   }, [pending]);
   const settle = (accepted: boolean) => {
+    removeAbortListener.current?.(); removeAbortListener.current = null;
     const finish = resolve.current;
     resolve.current = null;
     dialog.current?.close();
@@ -20,13 +22,19 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
     finish?.(accepted);
   };
   const confirm: Confirm = (message, options = {}) => new Promise(result => {
+    if (options.signal?.aborted) { result(false); return; }
     if (resolve.current) { result(false); return; }
     resolve.current = result;
+    if (options.signal) {
+      const stop = () => settle(false);
+      options.signal.addEventListener('abort', stop, { once: true });
+      removeAbortListener.current = () => options.signal?.removeEventListener('abort', stop);
+    }
     setPending({ message, title: options.title || 'Confirm action', confirmLabel: options.confirmLabel || 'Continue', destructive: options.destructive ?? false });
   });
   return <Context.Provider value={confirm}>
     {children}
-    <dialog ref={dialog} className="model-limit-dialog" aria-labelledby="confirm-action-title" onCancel={event => { event.preventDefault(); settle(false); }}>
+    <dialog ref={dialog} className="model-limit-dialog harness-confirm-dialog" aria-labelledby="confirm-action-title" onCancel={event => { event.preventDefault(); settle(false); }}>
       <h2 id="confirm-action-title">{pending?.title}</h2>
       <p>{pending?.message}</p>
       <div className="settings-actions">

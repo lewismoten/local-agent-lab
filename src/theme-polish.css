@@ -1,0 +1,519 @@
+/* The final theme layer keeps late-loaded model panels and dialogs consistent. */
+.harness {
+  --h-bg: #050914;
+  --h-panel: #101b2e;
+  --h-panel-2: #172840;
+  --h-line: #42627d;
+  --h-text: #f5faff;
+  --h-muted: #b8cada;
+  --h-cyan: #76f5e6;
+  --h-violet: #bea2ff;
+  --view-accent: #76f5e6;
+  --view-accent-soft: #76f5e626;
+}
+
+/* Each workspace has its own signal color, while sharing the same dark surfaces. */
+.harness[data-view="discover"] { --view-accent: #ba9bff; --view-accent-soft: #ba9bff2c; }
+.harness[data-view="agents"] { --view-accent: #ffca91; --view-accent-soft: #ffca9125; }
+.harness[data-view="identities"] { --view-accent: #f99bc9; --view-accent-soft: #f99bc929; }
+.harness[data-view="files"] { --view-accent: #92b9ff; --view-accent-soft: #92b9ff29; }
+.harness[data-view="memory"] { --view-accent: #c3a4ff; --view-accent-soft: #c3a4ff2b; }
+.harness[data-view="models"] { --view-accent: #9bf0c1; --view-accent-soft: #9bf0c127; }
+
+.harness-main {
+  background:
+    radial-gradient(ellipse 55% 45% at 97% 2%, var(--view-accent-soft), transparent 72%),
+    radial-gradient(ellipse 38% 52% at 8% 92%, #1169752b, transparent 78%),
+    linear-gradient(145deg, #091424, #070d1b 58%, #100f25);
+}
+
+.harness-main::before {
+  opacity: .62;
+  background:
+    linear-gradient(90deg, #7bd8ea12 1px, transparent 1px),
+    linear-gradient(#7bd8ea12 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, #8af6eb20 0 1px, transparent 2px);
+  background-size: 52px 52px, 52px 52px, 104px 104px;
+  mask-image: linear-gradient(#000a, transparent 83%);
+}
+
+.harness-topbar {
+  border-bottom-color: #527a90;
+  background: linear-gradient(100deg, #0d1c2df2, #111b30f2 65%, #201b39ed);
+}
+
+.harness-topbar::after {
+  background: linear-gradient(90deg, var(--view-accent), #879eff 52%, #f38cc5);
+  box-shadow: 0 0 16px var(--view-accent);
+}
+.harness.is-working .harness-topbar::after {
+  background: linear-gradient(90deg, var(--view-accent) 0 22%, #879eff 38%, #f38cc5 53%, var(--view-accent) 70%, #879eff 88%);
+  background-size: 200% 100%;
+}
+
+.harness-topbar::before {
+  content: '';
+  position: absolute;
+  inset: 7px auto 7px 11px;
+  width: 20px;
+  border-left: 1px solid #84f8ea76;
+  border-block: 1px solid #84f8ea76;
+  background: none;
+  mask-image: none;
+  pointer-events: none;
+  opacity: .65;
+}
+
+.harness-sidebar { border-right-color: #53748b; }
+.harness-nav button.active {
+  border-color: var(--view-accent);
+  box-shadow: inset 3px 0 var(--view-accent), 0 0 24px var(--view-accent-soft);
+}
+.harness-nav button.active svg { color: var(--view-accent); }
+.harness-nav button.active::after {
+  border-color: var(--view-accent);
+  box-shadow: 0 0 11px var(--view-accent);
+}
+.harness-brand { position: relative; }
+.harness-brand::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, #76f5e6, #a98ef27a 55%, transparent);
+  box-shadow: 0 0 13px #76f5e683;
+  pointer-events: none;
+}
+
+.harness-chat-header,
+.harness-page .harness-heading {
+  background-image:
+    radial-gradient(ellipse at 92% 8%, var(--view-accent-soft), transparent 42%),
+    linear-gradient(90deg, #a9dcef0c 1px, transparent 1px);
+  background-size: auto, 28px 100%;
+}
+
+.harness-chat-header::before,
+.harness-page .harness-heading::before {
+  background: linear-gradient(var(--view-accent), #8c9aff 65%, transparent);
+  box-shadow: 0 0 15px var(--view-accent);
+}
+.harness-page .harness-heading::after {
+  background: linear-gradient(90deg, transparent, var(--view-accent), #9aa3ff);
+  box-shadow: 0 0 15px var(--view-accent-soft);
+}
+.harness-page .harness-heading h1 {
+  background: linear-gradient(105deg, #f7fcff 18%, var(--view-accent) 73%, #d5c4ff);
+  background-clip: text;
+}
+
+.harness-page::before { filter: hue-rotate(0deg) drop-shadow(0 0 9px var(--view-accent-soft)); }
+.harness[data-view="discover"] .harness-page::before,
+.harness[data-view="memory"] .harness-page::before { filter: hue-rotate(65deg) drop-shadow(0 0 9px var(--view-accent-soft)); }
+.harness[data-view="agents"] .harness-page::before,
+.harness[data-view="identities"] .harness-page::before { filter: hue-rotate(160deg) drop-shadow(0 0 9px var(--view-accent-soft)); }
+.harness[data-view="files"] .harness-page::before { filter: hue-rotate(25deg) drop-shadow(0 0 9px var(--view-accent-soft)); }
+
+.harness-page .harness-card,
+.harness-results button,
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences) {
+  border-color: #496e84;
+  box-shadow: inset 0 1px #d9fff015, 0 16px 40px #02071275;
+}
+.harness-page .harness-card:hover,
+.harness-page .harness-card:focus-within,
+.harness-results button:hover,
+.harness-results button:focus-visible {
+  border-color: var(--view-accent);
+  box-shadow: inset 0 1px #d9fff01d, 0 15px 36px #02071280, 0 0 22px var(--view-accent-soft);
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) thead th {
+  background: #1c344c;
+  color: #ddf8f4;
+  border-bottom-color: #5a8290;
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr {
+  transition: background-color .18s ease, box-shadow .18s ease;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover,
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:focus-within {
+  box-shadow: inset 3px 0 #85f8e9, 0 0 20px #72f3e713;
+}
+
+.harness :is(.harness-primary, .button.primary):not(:disabled) {
+  box-shadow: 0 0 0 1px #bafff017, 0 7px 22px #52ebd939;
+}
+.harness :is(.harness-primary, .button.primary):not(:disabled):hover {
+  box-shadow: 0 0 0 1px #bafff04d, 0 9px 30px #52ebd968;
+}
+
+/* Native dialogs are top-layer elements, so style them without relying on page ancestors. */
+dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog, .voice-editor-dialog) {
+  color-scheme: dark;
+  color: #f4faff;
+  background: linear-gradient(145deg, #192c42, #0d1b2e 75%);
+  border-color: #6696a5;
+  box-shadow: 0 28px 90px #01040de0, 0 0 0 1px #8df7e630, 0 0 42px #a88af51c;
+}
+dialog:is(.harness-dialog, .model-limit-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog, .voice-editor-dialog)::backdrop {
+  background: #020611df;
+  backdrop-filter: blur(7px);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .harness-page .harness-card:hover,
+  .harness-results button:hover { transform: translateY(-2px); }
+  .harness-nav button:hover svg { filter: drop-shadow(0 0 8px currentColor); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-page .harness-heading::after {
+    transform-origin: left center;
+    animation: harness-accent-reveal .55s cubic-bezier(.2, .8, .2, 1) both;
+  }
+  .harness-page .harness-card:nth-child(-n + 8),
+  .harness-results button:nth-child(-n + 8) {
+    animation: harness-panel-reveal .34s cubic-bezier(.2, .8, .2, 1) both;
+  }
+  .harness-page .harness-card:nth-child(2), .harness-results button:nth-child(2) { animation-delay: 45ms; }
+  .harness-page .harness-card:nth-child(3), .harness-results button:nth-child(3) { animation-delay: 90ms; }
+  .harness-page .harness-card:nth-child(n + 4), .harness-results button:nth-child(n + 4) { animation-delay: 130ms; }
+}
+
+@keyframes harness-accent-reveal {
+  from { opacity: 0; transform: scaleX(.15); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+@keyframes harness-panel-reveal {
+  from { opacity: .55; translate: 0 5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@media (max-width: 700px) {
+  .harness-topbar::before { display: none; }
+  .harness-main::before { opacity: .32; }
+  .harness-welcome { margin-top: 4px; padding: 16px 14px 18px; }
+  .harness-welcome .harness-signal-art { height: 78px; margin: -27px auto -15px; transform: scale(.53); }
+  .harness-welcome > p { margin-bottom: 10px; line-height: 1.5; }
+  .harness-welcome .harness-starter { margin: 10px 0 9px; padding: 10px; }
+  .harness-welcome .harness-starter p { margin-bottom: 5px; }
+  .harness-welcome .harness-launch-grid { margin-top: 12px; padding-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr { transition: none; }
+  .harness-page .harness-card:hover,
+  .harness-results button:hover { transform: none; }
+}
+
+/* The first-run Discover screen has a visual map instead of an empty timeline. */
+.harness-discover-empty {
+  display: grid;
+  grid-template-columns: minmax(220px, 38%) minmax(0, 1fr);
+  align-items: center;
+  min-height: 330px;
+  margin: 22px 0;
+  overflow: hidden;
+  border: 1px solid #557c92;
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 28% 50%, #246b7d4d, transparent 37%),
+    radial-gradient(circle at 100% 0, #7354a132, transparent 46%),
+    linear-gradient(135deg, #13283d, #0c172a 73%);
+  box-shadow: inset 0 1px #cafff022, 0 23px 65px #01071388;
+}
+.harness-discover-map {
+  position: relative;
+  width: min(270px, 90%);
+  aspect-ratio: 1;
+  margin: 20px auto;
+  border: 1px solid #70e9dc42;
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 49.7%, #82e6e026 50%, transparent 50.3%),
+    linear-gradient(transparent 49.7%, #82e6e026 50%, transparent 50.3%),
+    radial-gradient(circle, #62ebdf0e 0 29%, transparent 30% 48%, #8c80ec1b 49% 49.5%, transparent 50%),
+    #101e3499;
+  box-shadow: 0 0 0 23px #6cf5e807, 0 0 0 48px #af8aff05, inset 0 0 43px #64e9dd12;
+}
+.harness-discover-map::before,
+.harness-discover-map-ring {
+  position: absolute;
+  inset: 17%;
+  border: 1px dashed #a393ff75;
+  border-radius: 50%;
+  content: '';
+}
+.harness-discover-map-ring {
+  inset: 8%;
+  border-color: #79f3df65;
+  animation: discover-orbit 34s linear infinite;
+}
+.harness-discover-map-core,
+.harness-discover-map-node {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  color: #a7fff2;
+  border: 1px solid #98fff090;
+  background: #183e52;
+  box-shadow: 0 0 22px #57e9d478, inset 0 1px #d8fff033;
+}
+.harness-discover-map-core {
+  inset: calc(50% - 29px);
+  border-radius: 16px 5px 16px 5px;
+  transform: rotate(-8deg);
+}
+.harness-discover-map-core svg { transform: rotate(8deg); }
+.harness-discover-map-node { width: 38px; height: 38px; border-radius: 11px; }
+.harness-discover-map-node.node-chat { top: 2%; left: 18%; }
+.harness-discover-map-node.node-models { top: 27%; right: -4%; color: #d7bcff; border-color: #c5a2ff8c; background: #342b55; }
+.harness-discover-map-node.node-files { bottom: 0; left: 19%; color: #ffd0a0; border-color: #ffd0a08c; background: #493543; }
+.harness-discover-empty-copy { padding: 28px 40px 28px 0; }
+.harness-discover-empty-copy h2 { margin: 9px 0; font-size: clamp(25px, 2.8vw, 35px); line-height: 1.13; }
+.harness-discover-empty-copy p { max-width: 45ch; margin: 0 0 22px; color: #bcd2df; font-size: 13px; line-height: 1.6; }
+.harness-discover-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@keyframes discover-orbit { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+  .harness-discover-empty { grid-template-columns: 1fr; gap: 0; }
+  .harness-discover-map { width: min(180px, 54vw); margin: 24px auto 0; }
+  .harness-discover-empty-copy { padding: 12px 22px 24px; text-align: center; }
+  .harness-discover-empty-copy p { margin-inline: auto; }
+  .harness-discover-empty-actions { justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness-discover-map-ring { animation: none; }
+}
+
+/* Finish the command-deck treatment on dense work surfaces. */
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences, .harness-file-list, .harness-file-editor) {
+  background-image:
+    radial-gradient(ellipse 45% 65% at 100% 0, var(--view-accent-soft), transparent 78%),
+    linear-gradient(145deg, #172a40, #0e1b2d 74%);
+}
+
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences)::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--view-accent), #8b9df5 52%, transparent 90%);
+  box-shadow: 0 0 14px var(--view-accent);
+  pointer-events: none;
+}
+
+.harness :is(.browser-model-tabs, .diagnostic-tabs) {
+  background: linear-gradient(180deg, #0d1a2b, #122239);
+  box-shadow: inset 0 -1px #4b6d83;
+}
+
+.harness :is(.browser-model-tabs, .diagnostic-tabs) button {
+  position: relative;
+  transition: color .18s ease, background-color .18s ease, border-color .18s ease;
+}
+
+.harness :is(.browser-model-tabs, .diagnostic-tabs) button.active::after {
+  content: '';
+  position: absolute;
+  inset: auto 12px 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--view-accent);
+  box-shadow: 0 0 12px var(--view-accent);
+  pointer-events: none;
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) thead th {
+  background-image: linear-gradient(180deg, #26445a, #192e44);
+  box-shadow: inset 0 1px #d7fff01a;
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody td {
+  border-bottom-color: #42617b;
+  transition: background-color .18s ease;
+}
+
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover td,
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:focus-within td {
+  background-color: #214459;
+}
+
+.harness :is(.download-ring, .voice-play-button, .harness-status-dot) {
+  filter: drop-shadow(0 0 7px #76f5e653);
+}
+
+.harness :is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog) h2 {
+  text-shadow: 0 0 20px #76f5e632;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness :is(.browser-model-tabs, .diagnostic-tabs) button.active::after {
+    animation: theme-tab-light .28s ease-out both;
+  }
+  .harness.is-working :is(.download-ring, .voice-play-button) {
+    animation: theme-active-glow 2.8s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes theme-tab-light {
+  from { opacity: 0; transform: scaleX(.25); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes theme-active-glow {
+  to { filter: drop-shadow(0 0 12px #76f5e69c); }
+}
+
+.harness-tool-inventory {
+  margin: 14px 0;
+  border: 1px solid #496e84;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #15293e, #0e1b2d);
+  color: var(--h-text);
+}
+.harness-tool-inventory > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.harness-tool-inventory > summary span { color: var(--h-muted); font-size: 12px; font-weight: 500; }
+.harness-tool-inventory-body { padding: 0 14px 14px; border-top: 1px solid #36546b; }
+.harness-tool-inventory-body > p,
+.harness-tool-group p { color: var(--h-muted); font-size: 12px; line-height: 1.5; }
+.harness-tool-group h3 { margin: 17px 0 6px; color: var(--view-accent); font-size: 13px; }
+.harness-tool-group dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 7px; margin: 0; }
+.harness-tool-group dl > div { padding: 9px 11px; border: 1px solid #36546b; border-radius: 7px; background: #101e31; }
+.harness-tool-group dt { color: #e4fff8; font: 600 12px ui-monospace, SFMono-Regular, monospace; }
+.harness-tool-group dd { margin: 4px 0 0; color: var(--h-muted); font-size: 12px; line-height: 1.4; }
+.harness-tool-search { width: min(100%, 340px); margin-top: 8px; }
+.harness-tool-profile-row, .harness-tool-profile-save { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 10px 0; }
+.harness-tool-profile-row label { display: grid; gap: 4px; min-width: min(100%, 240px); color: var(--h-muted); font-size: 12px; }
+.harness-tool-profile-row select { min-height: 36px; }
+.harness-tool-profile-save input { width: min(100%, 250px); }
+.harness-tool-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.harness-tool-row dt { overflow-wrap: anywhere; }
+.harness-tool-row select { min-width: 146px; width: auto; min-height: 30px; padding: 3px 7px; font-size: 12px; }
+.harness-tool-group dl > div.blocked { opacity: .72; border-color: #795667; }
+.harness-tool-group dl > div.blocked dt { color: #efabc1; }
+.harness-tool-reset { margin-top: 7px; padding: 0; border: 0; background: none; color: var(--h-cyan); font-size: 12px; cursor: pointer; }
+.harness-confirm-dialog p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: min(45vh, 420px); overflow: auto; }
+.harness-dialog.harness-conversation-tools-dialog { width: min(800px, calc(100vw - 28px)); max-height: min(86dvh, 800px); overflow: auto; }
+.harness-conversation-tools-head { align-items: center; justify-content: space-between; }
+.harness-conversation-tools-head h2 { margin: 0; }
+.harness-conversation-tools-dialog .harness-tool-inventory { margin: 10px 0 0; }
+
+/* On phones the keyboard changes the visual viewport without always changing 100dvh. */
+@media (max-width: 700px) {
+  .harness { min-height: var(--h-visible-height, 100dvh); }
+  .harness-chat { height: calc(var(--h-visible-height, 100dvh) - 59px - env(safe-area-inset-top)); }
+  .harness-sidebar,
+  .harness-sidebar-scrim { height: var(--h-visible-height, 100dvh); }
+  .harness-menu,
+  .harness-mobile-close { width: 44px; min-width: 44px; height: 44px; }
+}
+
+/* Studio finish: richer surfaces and motion around the content, never over it. */
+
+.harness-brand-mark {
+  background: #0d1d30;
+  border-color: #76f5e6a6;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.harness-brand-mark img { display: block; width: 100%; height: 100%; }
+.harness-brand-mark::after { border-radius: inherit; }
+
+.harness-chat-header,
+.harness-page .harness-heading {
+  box-shadow: inset 0 1px #ddfff014, 0 16px 36px #02071454;
+}
+
+.harness-chat-messages {
+  background-image:
+    radial-gradient(ellipse 48% 33% at 92% 3%, var(--view-accent-soft), transparent 80%),
+    linear-gradient(90deg, transparent 0 98px, #7edbe808 99px, transparent 100px),
+    radial-gradient(circle at 50% 50%, #8eece514 0 1px, transparent 2px);
+  background-size: auto, 100px 100px, 100px 100px;
+}
+
+.harness-welcome {
+  border-color: #84f5e58c;
+  background:
+    radial-gradient(circle at 50% 8%, #4fe5d72b, transparent 37%),
+    radial-gradient(circle at 100% 100%, #a07bfa21, transparent 43%),
+    linear-gradient(145deg, #172c42, #0c192d 72%);
+  box-shadow: 0 30px 82px #010611c9, inset 0 1px #d7fff041, 0 0 0 7px #65eadb0b, 0 0 55px #a278fa2c;
+}
+
+.harness-launch-grid button {
+  background:
+    radial-gradient(circle at 100% 0, #76f3e516, transparent 52%),
+    linear-gradient(145deg, #1d394c, #14263a);
+  box-shadow: inset 0 1px #d4fff01c, 0 7px 17px #02081445;
+}
+.harness-launch-grid button:nth-child(2) { background-image: radial-gradient(circle at 100% 0, #ae98f828, transparent 52%), linear-gradient(145deg, #242f51, #17243d); }
+.harness-launch-grid button:nth-child(3) { background-image: radial-gradient(circle at 100% 0, #f8c5901d, transparent 52%), linear-gradient(145deg, #343040, #1c283b); }
+.harness-launch-grid button svg:first-child { filter: drop-shadow(0 0 8px currentColor); }
+
+.harness-compose {
+  background: linear-gradient(180deg, #102036ec, #0a1729f5);
+  box-shadow: 0 -12px 34px #02081570;
+}
+.harness-compose-box {
+  border-color: #5a8191;
+  background: linear-gradient(145deg, #182d44, #101f33);
+  box-shadow: inset 0 1px #dafff01b, 0 8px 24px #02081470;
+}
+.harness-compose-box:focus-within {
+  border-color: #90f9e9;
+  box-shadow: inset 0 1px #dafff02b, 0 0 0 3px #70f6e51f, 0 10px 27px #0208149c;
+}
+
+.harness-page .harness-card,
+.harness :is(.harness-model-quick, .harness-preferences, .browser-model-panel, .model-catalog) {
+  background-image:
+    radial-gradient(circle at 100% 0, var(--view-accent-soft), transparent 41%),
+    linear-gradient(145deg, #182c42, #0d1b2d 73%);
+  box-shadow: inset 0 1px #e3fff017, 0 14px 38px #01071372;
+}
+
+.harness-page .harness-card:hover,
+.harness-page .harness-card:focus-within {
+  box-shadow: inset 0 1px #e3fff02c, 0 17px 40px #01071391, 0 0 25px var(--view-accent-soft);
+}
+
+.harness :is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog) {
+  border-color: #6d9ba8;
+  background: radial-gradient(circle at 100% 0, #6b4e9a2b, transparent 36%), linear-gradient(155deg, #182c41, #0b192a 73%);
+  box-shadow: 0 28px 88px #000c, inset 0 1px #d7fff02a, 0 0 0 1px #74f3e526;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-welcome { animation: studio-welcome .48s cubic-bezier(.2,.7,.2,1) both; }
+  .harness-launch-grid button:hover svg:first-child { transform: translateY(-2px) scale(1.08); }
+  .harness-launch-grid button svg:first-child { transition: transform .2s ease; }
+}
+
+@keyframes studio-welcome {
+  from { opacity: 0; transform: translateY(12px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 700px) {
+  .harness-welcome { box-shadow: 0 18px 42px #010611b8, inset 0 1px #d7fff041; }
+}

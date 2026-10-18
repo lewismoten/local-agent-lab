@@ -1,0 +1,46 @@
+.harness-dialog.harness-file-history {
+  width: min(760px, calc(100vw - 28px));
+  max-height: min(82dvh, 790px);
+  overflow: auto;
+}
+
+.harness-dialog.harness-file-history > .harness-file-history-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0 0 7px;
+}
+
+.harness-file-history-head h2 { margin: 3px 0 0; }
+.harness-file-history > .harness-muted { margin: 0 0 13px; }
+.harness-file-history-error { padding: 9px; border: 1px solid #bf6276; border-radius: 7px; color: #ffdae2; background: #482638; }
+.harness-file-history-empty { padding: 28px 12px; border: 1px dashed #456a7b; border-radius: 8px; color: var(--h-muted); text-align: center; }
+
+.harness-dialog.harness-file-history > .harness-file-history-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  max-height: 53dvh;
+  overflow: auto;
+}
+
+.harness-file-history-list article {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #385d70;
+  border-radius: 8px;
+  background: #14283a;
+}
+
+.harness-file-history-list article > div { flex: 1; min-width: 0; }
+.harness-file-history-list strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.harness-file-history-list small { display: block; color: var(--h-muted); font-size: 10px; }
+.harness-file-history-list button { min-height: 29px; padding: 4px 8px; font-size: 10px !important; }
+
+@media (max-width: 560px) {
+  .harness-file-history-list article { flex-wrap: wrap; }
+  .harness-file-history-list article > div { flex-basis: 100%; }
+}

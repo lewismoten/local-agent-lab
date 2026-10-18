@@ -8,6 +8,14 @@ export function qwen35LoadOptions(thinking: boolean) {
 }
 export const qwen35ChatOptions = { chat_template_kwargs: { enable_thinking: false } };
 
+/** A partial generation must never trigger a file or Git tool. */
+export function assertExecutableToolCalls(callCount: number, finishReason: string | null | undefined, signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason || new DOMException('Stopped.', 'AbortError');
+  if (callCount && ['length', 'incomplete', 'max_tokens', 'MAX_TOKENS'].includes(finishReason || '')) {
+    throw new Error('The model stopped before finishing its tool calls. Increase the output limit or narrow the request, then try again.');
+  }
+}
+
 export function visibleBrowserText(content: string | null | undefined): string {
   const raw = content?.trim() || '';
   if (raw.startsWith('<think>') && !raw.includes('</think>')) return '';
@@ -18,6 +26,14 @@ export function visibleBrowserText(content: string | null | undefined): string {
     .replace(/^<\|channel>thought[\s\S]*?<\|channel>text\s*/, '')
     .replace(/^<\|channel>text\s*/, '')
     .trim();
+}
+
+// Stream previews are provisional. Hide incomplete reasoning envelopes and
+// tool-call markup so only the eventual answer appears in the chat bubble.
+export function liveBrowserAnswer(content: string): string {
+  const raw = content.split(/<tool_call\b|<\|tool_call\b/i)[0];
+  if (raw.trimStart().startsWith('<') && !/^\s*(?:<think>[\s\S]*?<\/think>|<\|channel>thought[\s\S]*?<\|channel>text)/.test(raw)) return '';
+  return visibleBrowserText(raw.replace(/<(?:tool_call|\|tool_call)?$/i, ''));
 }
 
 export function visibleReasoningEnvelope(content: string | null | undefined): 'think-tags' | 'channel-tags' | null {

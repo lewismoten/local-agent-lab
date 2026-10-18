@@ -1,5 +1,5 @@
 import { assertTranscriptionFiles, transcriptionDirectory } from './transcriptionAssets.ts';
-import { withLocalModelMemory } from './localModelMemory.ts';
+import { notifyResidentModelUnloaded, registerResidentModel, withLocalModelMemory } from './localModelMemory.ts';
 import { showToast } from './toastStore.ts';
 import { writeBlob } from './storage.ts';
 import { transcriptionModel, type TranscriptionModelId } from './transcriptionManifest.ts';
@@ -12,6 +12,7 @@ export const getBrowserTranscriptionStatus = () => status;
 export const subscribeBrowserTranscription = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 let transcriber: ((audio: Float32Array, options: Record<string, unknown>) => Promise<{ text: string; chunks?: Array<{ text: string; timestamp: [number, number | null] }> }>) & { dispose: () => Promise<void> } | null = null;
 let sherpa: import('./sherpaTranscription.ts').SherpaTranscriber | null = null;
+registerResidentModel('transcription', () => !!transcriber || !!sherpa, unloadBrowserTranscription);
 let urls: string[] = [];
 let currentFolder: FileSystemDirectoryHandle | null = null;
 let currentModel: TranscriptionModelId | null = null;
@@ -27,7 +28,10 @@ async function release() {
   for (const url of urls) URL.revokeObjectURL(url); urls = [];
   publish({ folder: null, state: 'idle', message: '', progress: null });
 }
-export async function unloadBrowserTranscription() { await release(); }
+export async function unloadBrowserTranscription() {
+  try { await release(); }
+  finally { notifyResidentModelUnloaded(); }
+}
 export const isBrowserTranscriptionLoadedFrom = (folder: FileSystemDirectoryHandle, model: TranscriptionModelId = 'whisper') => currentFolder === folder && currentModel === model && !!(transcriber || sherpa);
 export async function loadBrowserTranscription(folder: FileSystemDirectoryHandle, model: TranscriptionModelId = 'whisper') {
   return withLocalModelMemory(async () => {
