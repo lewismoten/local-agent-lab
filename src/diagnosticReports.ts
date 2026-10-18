@@ -1,7 +1,8 @@
 import { writeBlob } from './storage.ts';
 import { modelFolderName } from './modelFolders.ts';
 
-export function diagnosticReportPath(modelPath: string, checkedAt: string, kind: 'text' | 'vision') {
+type DiagnosticKind = 'text' | 'vision' | 'image' | 'speech' | 'video' | 'pose' | 'vector' | 'mesh';
+export function diagnosticReportPath(modelPath: string, checkedAt: string, kind: DiagnosticKind) {
   const name = modelPath.split('/').pop()?.replace(/\.gguf$/i, '').replace(/[^\w.-]/g, '_') || 'model';
   const stamp = checkedAt.replace(/[:.]/g, '-');
   const parts = modelPath.split('/');
@@ -9,13 +10,13 @@ export function diagnosticReportPath(modelPath: string, checkedAt: string, kind:
   return `${parent}/diagnostics/${name}-${stamp}-${kind}.json`;
 }
 
-export async function saveDiagnosticJson(folder: FileSystemDirectoryHandle, modelPath: string, checkedAt: string, kind: 'text' | 'vision', report: unknown) {
+export async function saveDiagnosticJson(folder: FileSystemDirectoryHandle, modelPath: string, checkedAt: string, kind: DiagnosticKind, report: unknown) {
   const path = diagnosticReportPath(modelPath, checkedAt, kind);
   await writeBlob(folder, path, new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }));
   return path;
 }
 
-export async function loadLatestDiagnosticJson<T>(folder: FileSystemDirectoryHandle, modelPath: string, kind: 'text' | 'vision'): Promise<T | null> {
+export async function loadLatestDiagnosticJson<T>(folder: FileSystemDirectoryHandle, modelPath: string, kind: DiagnosticKind): Promise<T | null> {
   const paths = [diagnosticReportPath(modelPath, '', kind)];
   if (modelPath.split('/').length > 2 || modelPath.toLowerCase().endsWith('.gguf')) paths.push(`models/diagnostics/${modelPath.split('/').pop()?.replace(/\.gguf$/i, '').replace(/[^\w.-]/g, '_') || 'model'}--${kind}.json`);
   for (const path of paths) {
@@ -23,7 +24,7 @@ export async function loadLatestDiagnosticJson<T>(folder: FileSystemDirectoryHan
     const parts = path.split('/');
     let dir = folder;
     for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
-    const prefix = parts.at(-1)!.replace(/--(?:text|vision)\.json$/, '-');
+    const prefix = parts.at(-1)!.replace(/--(?:text|vision|image|speech|video|pose|vector|mesh)\.json$/, '-');
     let latest = '';
     for await (const [name, handle] of (dir as FileSystemDirectoryHandle & { entries(): AsyncIterableIterator<[string, FileSystemHandle]> }).entries()) {
       if (handle.kind === 'file' && name.startsWith(prefix) && name.endsWith(`-${kind}.json`) && name > latest) latest = name;

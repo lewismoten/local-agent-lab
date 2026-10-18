@@ -8,7 +8,7 @@ import { extractText } from './extract';
 import { now, projectFiles, uid, type ContinuityReport, type Project, type StorySuggestion, type WorldNote } from './model';
 import { readBlob, writeBlob } from './storage';
 import { getBrowserModelStatus, subscribeBrowserModel, type BrowserTools } from './browserModel';
-import { BROWSER_IMAGE_MODEL_PATH } from './browserImageAssets';
+import { browserImageModelGroup, browserImageModelLabel } from './browserImageAssets';
 import { hasOllamaModel, listOllamaModels } from './modelAvailability';
 import { getModelSession, isModelReady, modelFingerprint, subscribeModelSession } from './modelSession';
 import { checkContinuity } from './continuity';
@@ -70,7 +70,7 @@ export default function ChatPanel({ project, folder, config, imageConfig, profil
   const imageReady = imageConfigured(imageConfig) && isImageReady(imageConfig);
   const activeCatalogModel = config.provider === 'browser' && aiReady ? catalogModelForPath(config.model) : undefined;
   const selectedNeedle = (Object.entries(NEEDLE_MODEL_PATHS) as [NeedleVersion, string][]).find(([, path]) => path === config.model)?.[0];
-  const modelLabel = config.provider === 'browser' ? (config.model === BROWSER_IMAGE_MODEL_PATH ? 'Stable Diffusion creates images; choose a chat model for writing' : selectedNeedle ? `${NEEDLE_LABELS[selectedNeedle]} is a tool model; choose a chat model for writing` : aiReady ? `Ready: ${config.model}` : browserStatus.state === 'ready' && browserStatus.path === config.model ? 'Model loaded; test it for this session' : 'No browser model loaded')
+  const modelLabel = config.provider === 'browser' ? (browserImageModelGroup(config.model) ? `${browserImageModelLabel(browserImageModelGroup(config.model)!)} creates images; choose a chat model for writing` : selectedNeedle ? `${NEEDLE_LABELS[selectedNeedle]} is a tool model; choose a chat model for writing` : aiReady ? `Ready: ${config.model}` : browserStatus.state === 'ready' && browserStatus.path === config.model ? 'Model loaded; test it for this session' : 'No browser model loaded')
     : config.provider === 'ollama' ? (!config.model ? 'No Ollama model selected' : aiReady ? `Ready: ${config.model}` : ollamaState === 'ready' ? `Installed, test required: ${config.model}` : ollamaState === 'missing' ? `Model not installed: ${config.model}` : ollamaState === 'unavailable' ? 'Cannot reach Ollama' : 'Checking Ollama…')
     : aiReady ? `${config.model} · tested this session` : config.model ? `${config.model} · test required` : 'No AI model configured';
   const fileRef = useRef<HTMLInputElement>(null);
@@ -385,7 +385,7 @@ export default function ChatPanel({ project, folder, config, imageConfig, profil
       }
       if (content.startsWith('/image ')) {
         if (!folder) throw new Error('Connect a folder before generating an image.');
-        const blob = await generateImage(imageConfig, `Create an original visual reference for this story world. ${content.slice(7)}. Project context: ${project.title}; ${project.premise.slice(0, 900)}. Avoid copyrighted characters and logos.`);
+        const blob = await generateImage(imageConfig, `Create an original visual reference for this story world. ${content.slice(7)}. Project context: ${project.title}; ${project.premise.slice(0, 900)}. Avoid copyrighted characters and logos.`, undefined, undefined, undefined, folder);
         const path = `assets/chat/${uid()}.png`;
         await writeBlob(folder, path, blob);
         await persist({ ...current, messages: [...current.messages, user, { ...makeMessage('assistant', 'Generated image saved to ' + path), imagePath: path, provider: 'Image generator', model: imageConfig.model }] });

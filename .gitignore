@@ -10,4 +10,9 @@ workspace/
 # Keep local model weights off GitHub, even when copied into this checkout.
 models/
 /engines/
+/voices/
+/audio/
+/media/
 *.gguf
+/public/**/*-test
+/public/**/*-test.*

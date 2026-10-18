@@ -8,6 +8,12 @@ import { legacyEngineFileCount, organizeEngineFiles } from './engineFolders';
 import { showToast } from './toastStore';
 import { BROWSER_IMAGE_ENGINE_ASSETS, browserImageAssetsManager, browserImageTotal, getBrowserImageAssets, subscribeBrowserImageAssets } from './browserImageAssets';
 import DownloadRing from './DownloadRing';
+import { getSpeechAssets, speechAssetsManager, speechTotal, subscribeSpeechAssets } from './speechAssets.ts';
+import { CHATTERBOX_ENGINE_ASSETS, KOKORO_ENGINE_ASSETS, OPENVOICE_ENGINE_ASSETS, QWEN_TTS_ENGINE_ASSETS, SPEECH_ENGINE_ASSETS } from './speechManifest.ts';
+import { getTranscriptionAssets, subscribeTranscriptionAssets, transcriptionAssetsManager } from './transcriptionAssets.ts';
+import { transcriptionTotal } from './transcriptionManifest.ts';
+import SherpaArchiveImport from './SherpaArchiveImport.tsx';
+import { getMotionAssets, MOTION_MODELS, motionAssetsManager, motionTotal, subscribeMotionAssets } from './motionAssets.ts';
 
 const specs = [
   { group: 'PrismML' as const, assets: PRISM_ASSETS, queue: 'prism-bonsai-queue.json' },
@@ -23,11 +29,27 @@ export default function EngineCatalog({ folder }: { folder: FileSystemDirectoryH
   const wllama = useSyncExternalStore(subscribeWllamaEngineDownload, getWllamaEngineDownload);
   const needle = useSyncExternalStore(subscribeNeedleAssets, getNeedleAssets);
   const browserImage = useSyncExternalStore(subscribeBrowserImageAssets, getBrowserImageAssets);
+  const speech = useSyncExternalStore(subscribeSpeechAssets, getSpeechAssets);
+  const transcription = useSyncExternalStore(subscribeTranscriptionAssets, getTranscriptionAssets);
+  const motion = useSyncExternalStore(subscribeMotionAssets, getMotionAssets);
   const [actionError, setActionError] = useState('');
   const [legacyCount, setLegacyCount] = useState(0);
   const [organizing, setOrganizing] = useState(false);
   const [organizeStatus, setOrganizeStatus] = useState('');
   const autoAttempted = useRef<FileSystemDirectoryHandle | null>(null);
+  useEffect(() => {
+    if (folder && (browserImage.folder !== folder || !browserImage.checked.engine)) {
+      void browserImageAssetsManager.discover(folder).catch(error => setActionError(error instanceof Error ? error.message : String(error)));
+    }
+  }, [folder, browserImage.folder, browserImage.checked.engine]);
+  useEffect(() => {
+    if (folder && (needle.folder !== folder || !needle.checked.engine)) {
+      void needleAssetsManager.discover(folder).catch(error => setActionError(error instanceof Error ? error.message : String(error)));
+    }
+  }, [folder, needle.folder, needle.checked.engine]);
+  useEffect(() => { if (folder && (speech.folder !== folder || !speech.checked.engine || !speech.checked.kokoro_engine || !speech.checked.chatterbox_engine || !speech.checked.qwen_engine || !speech.checked.openvoice_engine)) void speechAssetsManager.discover(folder).catch(error => setActionError(error instanceof Error ? error.message : String(error))); }, [folder, speech.folder, speech.checked.engine, speech.checked.kokoro_engine, speech.checked.chatterbox_engine, speech.checked.qwen_engine, speech.checked.openvoice_engine]);
+  useEffect(() => { if (folder && transcription.folder !== folder) void transcriptionAssetsManager.discover(folder).catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error))); }, [folder, transcription.folder]);
+  useEffect(() => { if (folder && motion.folder !== folder) void motionAssetsManager.discover(folder).catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error))); }, [folder, motion.folder]);
   useEffect(() => {
     let current = true;
     if (!folder) { setLegacyCount(0); return; }
@@ -103,6 +125,7 @@ export default function EngineCatalog({ folder }: { folder: FileSystemDirectoryH
       <NeedleAssetCard folder={folder} group="engine" inTable disabled={organizing}/>
       {(() => {
         const installed = browserImage.folder === folder && browserImage.installed.engine;
+        const checked = browserImage.folder === folder && browserImage.checked.engine;
         const active = browserImage.folder === folder && browserImage.active === 'engine';
         const queued = browserImage.folder === folder && browserImage.queue.includes('engine');
         const bytes = browserImage.folder === folder ? browserImage.saved.engine : 0;
@@ -110,9 +133,107 @@ export default function EngineCatalog({ folder }: { folder: FileSystemDirectoryH
         const resumeHere = queued && browserImage.paused && browserImage.queue[0] === 'engine';
         const ringAction = active ? 'pause' : resumeHere || !queued && bytes > 0 ? 'resume' : undefined;
         return <tbody><tr>
-          <td className="model-catalog-name"><strong>ONNX image</strong></td><td>Microsoft / Scribbler</td><td>1.22.0</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={BROWSER_IMAGE_ENGINE_ASSETS[1].url} target="_blank" rel="noreferrer">MIT</a></td>
-          <td><div className="model-catalog-buttons">{!installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download ONNX image" aria-label="Download ONNX image" disabled={!folder || organizing} onClick={() => void startBrowserImage()}>📥</button>}{queued && !resumeHere && <span className="muted">Queued</span>}{!installed && (active || bytes > 0 || resumeHere) && <DownloadRing bytes={bytes} total={total} label="ONNX image engine download progress" action={ringAction} onAction={ringAction === 'pause' ? () => browserImageAssetsManager.pause() : ringAction === 'resume' ? () => void startBrowserImage() : undefined} disabled={organizing}/>}</div></td>
-        </tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Runs Stable Diffusion in this browser. WebGPU and shader-f16 required.</span><span className="model-catalog-detail-state">{!installed && queued && !active && <span>{browserImage.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{browserImage.paused && browserImage.queue[0] === 'engine' && browserImage.error && <p className="model-error">{browserImage.error}</p>}</td></tr></tbody>;
+          <td className="model-catalog-name"><strong>ONNX image</strong></td><td>Microsoft / Scribbler</td><td>1.30.0</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={BROWSER_IMAGE_ENGINE_ASSETS[1].url} target="_blank" rel="noreferrer">MIT</a></td>
+          <td><div className="model-catalog-buttons">{checked && !installed && !active && !queued && (bytes === 0 || browserImage.updateAvailable) && <button className="button secondary engine-action-button" type="button" data-tooltip={browserImage.updateAvailable ? 'Update ONNX image engine' : 'Download ONNX image'} aria-label={browserImage.updateAvailable ? 'Update ONNX image engine' : 'Download ONNX image'} disabled={!folder || organizing} onClick={() => void startBrowserImage()}>{browserImage.updateAvailable ? '🔄' : '📥'}</button>}{queued && !resumeHere && <span className="muted">Queued</span>}{!installed && (active || resumeHere || bytes > 0 && !browserImage.updateAvailable) && <DownloadRing bytes={bytes} total={total} label="ONNX image engine download progress" action={ringAction} onAction={ringAction === 'pause' ? () => browserImageAssetsManager.pause() : ringAction === 'resume' ? () => void startBrowserImage() : undefined} disabled={organizing}/>}</div></td>
+        </tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Runs compatible ONNX image models from Catalog. WebGPU and shader-f16 required.</span><span className="model-catalog-detail-state">{!checked && folder && <span>Checking files…</span>}{checked && !installed && browserImage.legacyInstalled && !active && !queued && <span>1.22 installed · update for new models</span>}{checked && !installed && browserImage.updateAvailable && !browserImage.legacyInstalled && !active && !queued && <span>Engine update needed</span>}{!installed && queued && !active && <span>{browserImage.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{browserImage.paused && browserImage.queue[0] === 'engine' && browserImage.error && <p className="model-error">{browserImage.error}</p>}</td></tr></tbody>;
+      })()}
+      {(() => {
+        const id = 'pose_engine' as const;
+        const checked = motion.folder === folder && motion.checked[id];
+        const installed = motion.folder === folder && motion.installed[id];
+        const active = motion.folder === folder && motion.active === id;
+        const queued = motion.folder === folder && motion.queue.includes(id);
+        const bytes = motion.folder === folder ? motion.saved[id] : 0;
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save MediaPipe Vision.'); motionAssetsManager.queue(folder, id); if (motion.paused) motionAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={id}><tr><td className="model-catalog-name"><strong>MediaPipe Vision</strong></td><td>Google · United States</td><td>1.1.1</td><td>{(motionTotal(id) / 1e6).toFixed(1)} MB</td><td><a href="https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE" target="_blank" rel="noreferrer">Apache 2.0</a></td><td><div className="model-catalog-buttons">{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download MediaPipe Vision" aria-label="Download MediaPipe Vision" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={motionTotal(id)} label="MediaPipe Vision download progress" action={active ? 'pause' : motion.paused || !queued ? 'resume' : undefined} onAction={active ? () => motionAssetsManager.pause() : () => void start()}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Pose detection in photos and video · WebAssembly. <a href={MOTION_MODELS[id].source} target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{motion.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const id = 'vector_engine' as const;
+        const checked = motion.folder === folder && motion.checked[id];
+        const installed = motion.folder === folder && motion.installed[id];
+        const active = motion.folder === folder && motion.active === id;
+        const queued = motion.folder === folder && motion.queue.includes(id);
+        const bytes = motion.folder === folder ? motion.saved[id] : 0;
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save VTracer.'); motionAssetsManager.queue(folder, id); if (motion.paused) motionAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={id}><tr><td className="model-catalog-name"><strong>VTracer</strong></td><td>Visioncortex</td><td>1.0 alpha 4</td><td>{(motionTotal(id) / 1e6).toFixed(1)} MB</td><td><a href="https://github.com/visioncortex/vtracer/blob/master/LICENSE" target="_blank" rel="noreferrer">MIT</a></td><td><div className="model-catalog-buttons">{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download VTracer" aria-label="Download VTracer" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={motionTotal(id)} label="VTracer download progress" action={active ? 'pause' : motion.paused || !queued ? 'resume' : undefined} onAction={active ? () => motionAssetsManager.pause() : () => void start()}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Raster images to editable SVG paths · WebAssembly. <a href={MOTION_MODELS[id].source} target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{motion.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const checked = speech.folder === folder && speech.checked.engine;
+        const installed = speech.folder === folder && speech.installed.engine;
+        const active = speech.folder === folder && speech.active === 'engine';
+        const queued = speech.folder === folder && speech.queue.includes('engine');
+        const bytes = speech.folder === folder ? speech.saved.engine : 0;
+        const total = speechTotal('engine');
+        const resume = !active && (speech.paused && speech.queue[0] === 'engine' || !queued && bytes > 0);
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the speech engine.'); speechAssetsManager.queue(folder, 'engine'); if (speech.paused) speechAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody><tr><td className="model-catalog-name"><strong>Pocket TTS</strong></td><td>Kyutai / vlapky · France</td><td>0.1 / ORT 1.20</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={SPEECH_ENGINE_ASSETS[0].url} target="_blank" rel="noreferrer">MIT</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download Pocket TTS engine" aria-label="Download Pocket TTS engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="Pocket TTS engine download progress" action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void start() : undefined}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Speech synthesis and short voice references · WebAssembly. <a href="https://github.com/vlapky/pocket-tts-js" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const group = 'kokoro_engine' as const;
+        const checked = speech.folder === folder && speech.checked[group];
+        const installed = speech.folder === folder && speech.installed[group];
+        const active = speech.folder === folder && speech.active === group;
+        const queued = speech.folder === folder && speech.queue.includes(group);
+        const bytes = speech.folder === folder ? speech.saved[group] : 0;
+        const total = speechTotal(group);
+        const resume = !active && (speech.paused && speech.queue[0] === group || !queued && bytes > 0);
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the speech engine.'); speechAssetsManager.queue(folder, group); if (speech.paused) speechAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={group}><tr><td className="model-catalog-name"><strong>Kokoro</strong></td><td>hexgrad / Hugging Face</td><td>1.2.1 / ORT 1.22</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={KOKORO_ENGINE_ASSETS[0].url} target="_blank" rel="noreferrer">Apache 2.0</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download Kokoro engine" aria-label="Download Kokoro engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="Kokoro engine download progress" action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void start() : undefined}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">English speech with selectable voices · WebAssembly. <a href="https://github.com/hexgrad/kokoro/tree/main/kokoro.js" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const group = 'chatterbox_engine' as const;
+        const checked = speech.folder === folder && speech.checked[group];
+        const installed = speech.folder === folder && speech.installed[group];
+        const active = speech.folder === folder && speech.active === group;
+        const queued = speech.folder === folder && speech.queue.includes(group);
+        const bytes = speech.folder === folder ? speech.saved[group] : 0;
+        const total = speechTotal(group);
+        const resume = !active && (speech.paused && speech.queue[0] === group || !queued && bytes > 0);
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the speech engine.'); speechAssetsManager.queue(folder, group); if (speech.paused) speechAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={group}><tr><td className="model-catalog-name"><strong>Chatterbox</strong></td><td>Hugging Face / Microsoft</td><td>Transformers 4 / ORT 1.25</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={CHATTERBOX_ENGINE_ASSETS[0].url} target="_blank" rel="noreferrer">Apache 2.0</a> / <a href={CHATTERBOX_ENGINE_ASSETS[1].url} target="_blank" rel="noreferrer">MIT</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download Chatterbox engine" aria-label="Download Chatterbox engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="Chatterbox engine download progress" action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void start() : undefined}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Runs Chatterbox and Chatterbox Turbo in WebAssembly. <a href="https://github.com/huggingface/transformers.js" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const group = 'qwen_engine' as const;
+        const checked = speech.folder === folder && speech.checked[group];
+        const installed = speech.folder === folder && speech.installed[group];
+        const active = speech.folder === folder && speech.active === group;
+        const queued = speech.folder === folder && speech.queue.includes(group);
+        const bytes = speech.folder === folder ? speech.saved[group] : 0;
+        const total = speechTotal(group);
+        const resume = !active && (speech.paused && speech.queue[0] === group || !queued && bytes > 0);
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the speech engine.'); speechAssetsManager.queue(folder, group); if (speech.paused) speechAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={group}><tr><td className="model-catalog-name"><strong>Qwen3-TTS</strong></td><td>llama-web-bridge · MIT</td><td>0.1.65</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={QWEN_TTS_ENGINE_ASSETS[0].url} target="_blank" rel="noreferrer">MIT</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download Qwen3-TTS engine" aria-label="Download Qwen3-TTS engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="Qwen3-TTS engine download progress" action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void start() : undefined}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Memory64 browser bridge for Qwen3-TTS audio generation. <a href="https://github.com/leehack/llama-web-bridge" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const group = 'openvoice_engine' as const;
+        const checked = speech.folder === folder && speech.checked[group];
+        const installed = speech.folder === folder && speech.installed[group];
+        const active = speech.folder === folder && speech.active === group;
+        const queued = speech.folder === folder && speech.queue.includes(group);
+        const bytes = speech.folder === folder ? speech.saved[group] : 0;
+        const total = speechTotal(group);
+        const resume = !active && (speech.paused && speech.queue[0] === group || !queued && bytes > 0);
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the speech engine.'); speechAssetsManager.queue(folder, group); if (speech.paused) speechAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key={group}><tr><td className="model-catalog-name"><strong>OpenVoice</strong></td><td>Microsoft</td><td>ONNX Runtime 1.25</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href={OPENVOICE_ENGINE_ASSETS[0].url} target="_blank" rel="noreferrer">MIT</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download OpenVoice engine" aria-label="Download OpenVoice engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="OpenVoice engine download progress" action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void start() : undefined}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Runs OpenVoice V2 audio conversion in WebAssembly. <a href="https://github.com/myshell-ai/OpenVoice" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const checked = transcription.folder === folder && transcription.checked.engine;
+        const installed = transcription.folder === folder && transcription.installed.engine;
+        const active = transcription.folder === folder && transcription.active === 'engine';
+        const queued = transcription.folder === folder && transcription.queue.includes('engine');
+        const bytes = transcription.folder === folder ? transcription.saved.engine : 0;
+        const total = transcriptionTotal('engine');
+        const start = async () => { if (!folder) return; try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the transcription engine.'); transcriptionAssetsManager.queue(folder, 'engine'); if (transcription.paused) transcriptionAssetsManager.resume(folder); } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); } };
+        return <tbody key="transformers-asr"><tr><td className="model-catalog-name"><strong>Transformers ASR</strong></td><td>Hugging Face / Microsoft</td><td>3.8.1 / ORT 1.21</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href="https://github.com/huggingface/transformers.js/blob/v3.8.1/LICENSE" target="_blank" rel="noreferrer">Apache 2.0</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary engine-action-button" type="button" data-tooltip="Download transcription engine" aria-label="Download transcription engine" disabled={!folder} onClick={() => void start()}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={total} label="Transcription engine download progress" action={active ? 'pause' : transcription.paused || !queued ? 'resume' : undefined} onAction={active ? () => transcriptionAssetsManager.pause() : () => void start()}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Runs Whisper, Moonshine, and Wav2Vec2 speech recognition in WebAssembly. <a href="https://github.com/huggingface/transformers.js" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{transcription.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
+      })()}
+      {(() => {
+        const kind = 'sherpa' as const;
+        const checked = transcription.folder === folder && transcription.checked[kind];
+        const installed = transcription.folder === folder && transcription.installed[kind];
+        const active = transcription.folder === folder && transcription.active === kind;
+        const queued = transcription.folder === folder && transcription.queue.includes(kind);
+        const bytes = transcription.folder === folder ? transcription.saved[kind] : 0;
+        return <tbody key="sherpa-asr"><tr><td className="model-catalog-name"><strong>Sherpa ONNX ASR</strong></td><td>k2-fsa</td><td>1.12.32</td><td>174.7 MB bundle</td><td><a href="https://github.com/k2-fsa/sherpa-onnx/blob/v1.12.32/LICENSE" target="_blank" rel="noreferrer">Apache 2.0</a></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !transcription.sherpaArchiveReady && <SherpaArchiveImport folder={folder} compact/>}{!installed && (active || transcription.sherpaArchiveReady) && <DownloadRing bytes={bytes} total={transcriptionTotal(kind)} label="Sherpa bundle download progress" action={active ? 'pause' : transcription.paused || !queued ? 'resume' : undefined} onAction={active ? () => transcriptionAssetsManager.pause() : () => { transcriptionAssetsManager.queue(folder!, kind); transcriptionAssetsManager.resume(folder!); }}/>}</div></td></tr><tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Streaming English transcription. The upstream download includes its model and engine together. <a href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.12.32" target="_blank" rel="noreferrer">Source</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{transcription.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div></td></tr></tbody>;
       })()}
     </table></div>
     {actionError && <p className="model-error" role="alert">{actionError}</p>}

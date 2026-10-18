@@ -1,10 +1,14 @@
 import { unloadLocalOllama } from './localOllama.ts';
 import { withLocalModelMemory } from './localModelMemory.ts';
 import type { BrowserImagePreview } from './browserImage.ts';
+import type { BrowserImageModelGroup } from './browserImageAssets.ts';
 
 export type ImageProvider = 'openai' | 'bonsai' | 'compatible' | 'browser';
-export type ImagePreset = 'none' | 'openai' | 'bonsai' | 'tiny-sd' | 'small-sd' | 'pixart-delta' | 'browser-sd15';
-export type ImageConfig = { preset: ImagePreset; provider: ImageProvider; endpoint: string; model: string; apiKey: string; backend?: string };
+export type ImagePreset = 'none' | 'openai' | 'bonsai' | 'tiny-sd' | 'small-sd' | 'pixart-delta' | 'browser-sd15' | 'browser-tiny-q4' | 'browser-tiny-fp16' | 'browser-sdxs' | 'browser-lcm' | 'browser-supra-mobile';
+export type ImageConfig = { preset: ImagePreset; provider: ImageProvider; endpoint: string; model: string; apiKey: string; backend?: string; steps?: number; guidanceScale?: number };
+
+export const browserImagePresetForGroup = (group: BrowserImageModelGroup): ImagePreset =>
+  group === 'tiny-q4' ? 'browser-tiny-q4' : group === 'tiny-fp16' ? 'browser-tiny-fp16' : group === 'sdxs' ? 'browser-sdxs' : group === 'lcm' ? 'browser-lcm' : group === 'supra-mobile' ? 'browser-supra-mobile' : 'browser-sd15';
 
 export const IMAGE_PRESETS: Record<ImagePreset, ImageConfig> = {
   none: { preset: 'none', provider: 'compatible', endpoint: '', model: '', apiKey: '' },
@@ -14,6 +18,11 @@ export const IMAGE_PRESETS: Record<ImagePreset, ImageConfig> = {
   'small-sd': { preset: 'small-sd', provider: 'compatible', endpoint: 'http://localhost:8001/v1', model: 'OFA-Sys/small-stable-diffusion-v0', apiKey: '' },
   'pixart-delta': { preset: 'pixart-delta', provider: 'compatible', endpoint: 'http://localhost:8002/v1', model: 'PixArt-alpha/PixArt-LCM-XL-2-1024-MS', apiKey: '' },
   'browser-sd15': { preset: 'browser-sd15', provider: 'browser', endpoint: '', model: 'Stable Diffusion 1.5 ONNX', apiKey: '' },
+  'browser-tiny-q4': { preset: 'browser-tiny-q4', provider: 'browser', endpoint: '', model: 'Tiny-SD Q4 ONNX', apiKey: '' },
+  'browser-tiny-fp16': { preset: 'browser-tiny-fp16', provider: 'browser', endpoint: '', model: 'Tiny-SD FP16 ONNX', apiKey: '' },
+  'browser-sdxs': { preset: 'browser-sdxs', provider: 'browser', endpoint: '', model: 'SDXS DreamShaper ONNX', apiKey: '', steps: 1, guidanceScale: 0 },
+  'browser-lcm': { preset: 'browser-lcm', provider: 'browser', endpoint: '', model: 'DreamShaper 8 LCM INT8 ONNX', apiKey: '', steps: 4, guidanceScale: 0 },
+  'browser-supra-mobile': { preset: 'browser-supra-mobile', provider: 'browser', endpoint: '', model: 'Supra2-IMG Mobile ONNX', apiKey: '', steps: 20, guidanceScale: 3 },
 };
 
 export function imageConfigured(config: ImageConfig) {
@@ -27,9 +36,14 @@ function imageBlobFromBase64(encoded: string): Blob {
   return new Blob([bytes], { type: 'image/png' });
 }
 
-export async function generateImage(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void): Promise<Blob> {
+export async function generateImage(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void, workspace?: FileSystemDirectoryHandle | null, onStep?: (step: number, totalSteps: number) => void, seed?: number): Promise<Blob> {
   if (!imageConfigured(config)) throw new Error('Choose an image generator in AI profiles first.');
-  if (config.provider === 'browser') return (await import('./browserImage.ts')).generateBrowserImage(prompt, signal, onProgress, onPreview);
+  if (config.provider === 'browser') {
+    const group: BrowserImageModelGroup = config.preset === 'browser-tiny-q4' ? 'tiny-q4' : config.preset === 'browser-tiny-fp16' ? 'tiny-fp16' : config.preset === 'browser-sdxs' ? 'sdxs' : config.preset === 'browser-lcm' ? 'lcm' : config.preset === 'browser-supra-mobile' ? 'supra-mobile' : 'model';
+    const runtime = await import('./browserImage.ts');
+    if (workspace) runtime.setBrowserImageFolder(workspace);
+    return runtime.generateBrowserImage(prompt, signal, onProgress, onPreview, group, { steps: config.steps, guidanceScale: config.guidanceScale, onStep, seed });
+  }
   let localEndpoint = false;
   try { localEndpoint = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(config.endpoint).hostname); } catch { /* Fetch will report the endpoint error. */ }
   if (localEndpoint) return withLocalModelMemory(async () => {

@@ -14,7 +14,7 @@ export const DEFAULT_CAPABILITIES = [
   { id: 'license', label: 'License files', icon: '', version: 1, description: 'Checks the required license files.' },
   { id: 'metadata', label: 'Model metadata', icon: '', version: 1, description: 'Reads model identity and architecture from the GGUF.' },
   { id: 'context', label: 'Loaded context', icon: '', version: 1, description: 'Checks the context size loaded in this browser.' },
-  { id: 'imageGeneration', label: 'Image generation', icon: '🎨', version: 1, description: 'Generates and decodes a test image in this browser.' },
+  { id: 'imageGeneration', label: 'Image generation', icon: '🎨', version: 2, description: 'Generates a test image and checks for a visible green region.' },
   { id: 'vision.shapes', label: 'Vision: shapes and colors', icon: '🖼️', version: 1, description: 'Identifies colored geometric shapes in a generated image.' },
   { id: 'vision.text', label: 'Vision: text and numbers', icon: '', version: 1, description: 'Reads clear text and digits from an image.' },
   { id: 'vision.imperfect', label: 'Vision: imperfect print', icon: '', version: 1, description: 'Reads partially damaged print.' },
@@ -158,5 +158,5 @@ export function capabilityBadges(ledger: CapabilityLedger, path: string, fileByt
   const tests = ledger.models[path]?.tests || {};
   if (fileBytes !== undefined && ledger.models[path]?.fileBytes !== undefined && ledger.models[path].fileBytes !== fileBytes) return [];
   const isNeedle = Object.values(NEEDLE_MODEL_PATHS).includes(path);
-  return DEFAULT_CAPABILITIES.filter(item => !!item.icon && tests[item.id]?.result === 'passed' && (!isNeedle || tests[item.id].testVersion >= needleRevision(path, item.id))).map(item => ({ id: item.id, icon: item.icon, title: item.id.startsWith('vision.') ? 'Vision' : item.label, stale: tests[item.id].testVersion < needleRevision(path, item.id) }));
+  return DEFAULT_CAPABILITIES.filter(item => !!item.icon && tests[item.id]?.result === 'passed' && (!isNeedle && item.id !== 'imageGeneration' || tests[item.id].testVersion >= needleRevision(path, item.id))).map(item => ({ id: item.id, icon: item.icon, title: item.id.startsWith('vision.') ? 'Vision' : item.label, stale: tests[item.id].testVersion < needleRevision(path, item.id) }));
 }

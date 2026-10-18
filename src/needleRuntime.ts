@@ -38,6 +38,8 @@ export function needleLoaded(folder: FileSystemDirectoryHandle, version: NeedleV
 export function loadNeedle(folder: FileSystemDirectoryHandle, version: NeedleVersion) {
   return withLocalModelMemory(async () => {
     await (await import('./browserImage.ts')).unloadBrowserImageModel();
+    await (await import('./browserSpeech.ts')).unloadBrowserSpeech();
+    await (await import('./browserTranscription.ts')).unloadBrowserTranscription();
     await (await import('./browserModel.ts')).unloadBrowserModel();
     await (await import('./localOllama.ts')).unloadLocalOllama();
     await loadNeedleInternal(folder, version);

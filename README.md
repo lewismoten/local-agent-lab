@@ -44,6 +44,22 @@ workspace/
   engines/Wllama/               # optional GGUF browser runtime and license
   engines/PrismML/              # optional Bonsai 2 source, compiler, and notices
   engines/Needle/               # optional Needle browser runtime and notices
+  engines/Pocket-TTS/            # optional speech runtime and licenses
+  models/Pocket-TTS-<language>/  # speech weights, license, diagnostics
+  engines/Kokoro/                # optional Kokoro runtime and licenses
+  models/Kokoro-82M-Q8/         # Kokoro weights, voices, license, diagnostics
+  engines/Chatterbox/            # optional Transformers.js and ONNX runtime
+  models/Chatterbox-Turbo-Q4F16/ # Turbo weights, license, diagnostics
+  engines/Qwen3-TTS/             # optional memory64 speech runtime
+  models/Qwen3-TTS-1.7B-Q4/     # speech model, audio projector, license
+  engines/OpenVoice/            # optional ONNX voice conversion runtime
+  models/OpenVoice-V2-Q8/       # encoder, converter, license, provenance
+  voices/samples/               # voice recordings and their reading text
+  audio/generated/              # synthesized WAV files and metadata
+  engines/Transformers-ASR/     # optional Whisper, Moonshine, and Wav2Vec2 runtime
+  engines/Sherpa-ONNX-ASR/      # optional streaming transcription runtime
+  models/<transcription-model>/ # pinned transcription weights and license
+  transcripts/                  # saved audio transcripts and timed segments
 ```
 
 The initial project has three empty books. Edit the JSON files directly if you like, then use **Reload folder**. Give a prequel position 0, and select the later book under **Reference other books** to give AI its established events. Link an imported outline PDF to a book under **Use these source documents** so its extracted text informs chapter outline generation.
@@ -58,7 +74,7 @@ The writing room is the default screen. Choose an AI profile at the top, then ch
 
 - **Import:** add PDF, TXT, or Markdown files to Source documents.
 - **Read:** type `/read search terms` to retrieve matching documents, world notes, characters, and chapters. Type `/files` to list project paths, then `/read path:relative/file.json` to read a text, Markdown, PDF, or JSON file from the connected folder. Results are visible in the conversation.
-- **Image:** choose and test an image generator in AI profiles, then type `/image description`. Connect a folder to save the result.
+- **Image:** choose a browser image model under **Local Models** and run **Inspect features**, or configure an external service through **Image services** in AI profiles. Then type `/image description`. Connect a folder to save the result.
 
 With the browser GGUF profile, the model can also call bounded read tools to list project files, search project records, and read a text, Markdown, JSON, or PDF file in the connected folder. Tool results appear in chat. The model can discuss and suggest file edits, but chat replies do not silently change story JSON. The structured editors remain the place to approve those changes.
 
@@ -103,7 +119,19 @@ Each selected model must answer a short connection check in the current browser 
 
 API keys remain in this tab's memory and are not put in project files, local storage, the build, or GitHub Actions. Requests go directly from your browser to the selected endpoint; use only keys you are comfortable using in a browser session. There is no server to hide secrets. Some endpoints block browser CORS requests; a local HTTPS proxy may be needed, especially from GitHub Pages.
 
-Character portraits can be uploaded or generated with a separately selected image generator. Image options include browser Stable Diffusion 1.5 through optional ONNX Runtime Web downloads, OpenAI, Bonsai Image through its local server, and Tiny/Small Stable Diffusion or PixArt-δ through the optional local image server. Test the image generator in the current browser session before use. Generated images are saved beside uploaded references. See [Image generation setup](docs/image-generation.md). A text GGUF model cannot generate images by itself.
+### Browser speech
+
+The **Catalog** offers three Pocket TTS INT8 bundles (English, German, and Spanish), Kokoro 82M Q8 with four built-in English voices, Chatterbox Q4F16, Chatterbox Turbo Q4F16, Qwen3-TTS 1.7B Q4, and OpenVoice V2 Q8. Download a model and its matching engine to your project folder, then choose **Speech & voice** under **Local Models** to load it. The app checks pinned file hashes and the saved license before loading. Engine code and weights are downloaded only on request; neither is included in the site build. Loading speech unloads any active text, tool, or image model.
+
+**Voices** keeps reading passages with names, dates, numbers, and contrasting sounds. Record or upload a short reference clip there; its audio and reading text are stored together in `voices/samples/`. Kokoro uses built-in voices and does not clone recordings. Under **Local Models**, choose a speech model and use **Load** and **Inspect features** in the usual control row. The speech test lets you choose a voice, generate and listen to a WAV, and save a diagnostic report. Both Chatterbox models require a saved English voice. The original Chatterbox has an expression slider; Turbo test passages include supported sound tags such as `[chuckle]` and `[laugh]`. The pinned Turbo ONNX model has no exaggeration input. Its ONNX export runs in WebAssembly in this browser engine; generation can take longer than loading. Qwen3-TTS uses a separate memory64 WebGPU bridge and needs a cross-origin-isolated page. Its bridge returns audio at the end of each request, so the app generates short passages in sequence and can play each completed passage while the next one generates. OpenVoice converts existing source speech to a saved reference voice; it does not synthesize text by itself. Source recordings up to ten minutes are split into roughly twenty-second parts, with a choice of pause-aware or even cuts. The converted parts are joined with short crossfades. Reference clips remain limited to thirty seconds. **Stop** ends generation and live playback; load the model again afterward. The WAV and its prompt or source and voice metadata stay in the workspace. Pocket TTS voice cloning uses up to the first ten seconds of a clip. English, German, and Spanish are separate Pocket bundles; select the matching language for best results.
+
+### Browser transcription
+
+Choose **Transcription** in the Catalog for Whisper Tiny English, Moonshine Tiny, Moonshine Base, Wav2Vec2 Base 960h, or Sherpa Zipformer Streaming. The first four use the Transformers ASR engine and can transcribe files or microphone passages. Sherpa uses its own engine and updates microphone text as speech is decoded. Model files and licenses are hash checked in the connected workspace. Sherpa's official release archive must be downloaded from the link in **Import Sherpa**, then imported into the workspace; the browser cannot fetch that GitHub release directly because its download endpoint does not permit cross-origin requests. The app verifies and unpacks the archive. Under **Local Models**, select a downloaded model, click **Load**, then **Transcribe**. Stopping a microphone session saves its recording in `audio/recordings/` and transcript in `transcripts/`. These models recognize English; they do not translate or separate speakers. Loading transcription unloads other local models to limit memory use.
+
+Character portraits can be uploaded or generated with a selected image model. Browser options include Stable Diffusion 1.5, Tiny-SD Q4 and FP16, SDXS DreamShaper, DreamShaper 8 LCM, and Supra2-IMG Mobile through optional ONNX Runtime Web downloads. Select one under **Local Models** and run **Inspect features** to test it. The **Image services** dialog holds external options such as OpenAI, Bonsai Image through its local server, and Tiny/Small Stable Diffusion or PixArt-δ through the optional local image server. Generated images are saved beside uploaded references. See [Image generation setup](docs/image-generation.md). A text GGUF model cannot generate images by itself.
+
+The Catalog also offers VTracer for raster-to-SVG tracing, MediaPipe Pose Landmarker for photo/video skeleton data, and an experimental browser TripoSR export for static 3D meshes. Each uses optional files saved to the connected workspace. See [Browser graphics and pose tools](docs/graphics-and-pose.md) for inputs, outputs, licensing, and limits.
 
 Generation uses the project profile, world bible, character visual descriptions and relationships, influence preferences, imported source excerpts, and selected reference books. Chapter edits and external file reloads flag later stages for review. AI never silently rewrites downstream work.
 

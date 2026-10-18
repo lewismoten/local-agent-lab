@@ -319,6 +319,8 @@ export async function unloadBrowserModel() {
 export function loadBrowserModel(folder: FileSystemDirectoryHandle, path: string, contextWindow: number, thinkingBudgetTokens = 0, withVision = false) {
   return withLocalModelMemory(async () => {
     await (await import('./browserImage.ts')).unloadBrowserImageModel();
+    await (await import('./browserSpeech.ts')).unloadBrowserSpeech();
+    await (await import('./browserTranscription.ts')).unloadBrowserTranscription();
     await (await import('./needleRuntime.ts')).unloadNeedle();
     await (await import('./localOllama.ts')).unloadLocalOllama();
     await loadBrowserModelInternal(folder, path, contextWindow, thinkingBudgetTokens, withVision);

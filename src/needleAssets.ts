@@ -34,7 +34,7 @@ export const NEEDLE_MODEL_ASSETS: Record<NeedleVersion, readonly Asset[]> = {
   ],
 };
 type NeedleAssetGroup = 'engine' | NeedleVersion;
-type NeedleAssetState = { folder: FileSystemDirectoryHandle | null; active: NeedleAssetGroup | null; queue: NeedleAssetGroup[]; queuePaused: boolean; errorGroup: NeedleAssetGroup | null; status: 'idle' | 'downloading' | 'paused' | 'error'; installed: Record<NeedleAssetGroup, boolean>; present: Record<NeedleVersion, boolean>; verification: Record<NeedleVersion, string>; saved: Record<NeedleAssetGroup, number>; currentBytes: number; totalBytes: number; currentAsset: string; error: string; revision: number };
+type NeedleAssetState = { folder: FileSystemDirectoryHandle | null; active: NeedleAssetGroup | null; queue: NeedleAssetGroup[]; queuePaused: boolean; errorGroup: NeedleAssetGroup | null; status: 'idle' | 'downloading' | 'paused' | 'error'; installed: Record<NeedleAssetGroup, boolean>; checked: Record<NeedleAssetGroup, boolean>; present: Record<NeedleVersion, boolean>; verification: Record<NeedleAssetGroup, string>; saved: Record<NeedleAssetGroup, number>; currentBytes: number; totalBytes: number; currentAsset: string; error: string; revision: number };
 const groups: NeedleAssetGroup[] = ['engine', 'needle', 'needle2', 'needle3'];
 const assets = (group: NeedleAssetGroup) => group === 'engine' ? NEEDLE_ENGINE_ASSETS : NEEDLE_MODEL_ASSETS[group];
 const legacyName = (version: NeedleVersion, name: string) => name === 'LICENSE.txt' ? `${NEEDLE_LEGACY_MODEL_PATHS[version].split('/').pop()}.LICENSE.txt` : name === 'vocab.txt' ? 'needle-vocab.txt' : name;
@@ -90,10 +90,12 @@ async function stageLegacyAssets(folder: FileSystemDirectoryHandle, version: Nee
     if (legacy) await copyFile(legacy, target, asset.name);
   }
 }
-let state: NeedleAssetState = { folder: null, active: null, queue: [], queuePaused: false, errorGroup: null, status: 'idle', installed: { engine: false, needle: false, needle2: false, needle3: false }, present: { needle: false, needle2: false, needle3: false }, verification: { needle: '', needle2: '', needle3: '' }, saved: { engine: 0, needle: 0, needle2: 0, needle3: 0 }, currentBytes: 0, totalBytes: 0, currentAsset: '', error: '', revision: 0 };
+const emptyChecked = () => ({ engine: false, needle: false, needle2: false, needle3: false });
+let state: NeedleAssetState = { folder: null, active: null, queue: [], queuePaused: false, errorGroup: null, status: 'idle', installed: { engine: false, needle: false, needle2: false, needle3: false }, checked: emptyChecked(), present: { needle: false, needle2: false, needle3: false }, verification: { engine: '', needle: '', needle2: '', needle3: '' }, saved: { engine: 0, needle: 0, needle2: 0, needle3: 0 }, currentBytes: 0, totalBytes: 0, currentAsset: '', error: '', revision: 0 };
 const listeners = new Set<() => void>();
 let controller: AbortController | null = null;
 let activeTask: Promise<void> | null = null;
+let discovery: { folder: FileSystemDirectoryHandle; promise: Promise<void> } | null = null;
 const publish = (patch: Partial<NeedleAssetState>) => { state = { ...state, ...patch }; listeners.forEach(listener => listener()); };
 export const getNeedleAssets = () => state;
 export const subscribeNeedleAssets = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -116,7 +118,7 @@ function startNext(folder: FileSystemDirectoryHandle) {
         publish({ currentBytes: base });
       }
       if (group !== 'engine') await writeFile(dir, 'SOURCE.txt', sourceText(group));
-      publish({ installed: { ...state.installed, [group]: true }, present: group === 'engine' ? state.present : { ...state.present, [group]: true }, verification: group === 'engine' ? state.verification : { ...state.verification, [group]: '' }, saved: { ...state.saved, [group]: totalBytes }, status: 'idle', active: null, currentAsset: '', revision: state.revision + 1 });
+      publish({ installed: { ...state.installed, [group]: true }, checked: { ...state.checked, [group]: true }, present: group === 'engine' ? state.present : { ...state.present, [group]: true }, verification: { ...state.verification, [group]: '' }, saved: { ...state.saved, [group]: totalBytes }, status: 'idle', active: null, currentAsset: '', revision: state.revision + 1 });
       showToast(`${group === 'engine' ? 'Needle browser engine' : NEEDLE_LABELS[group]} finished downloading.`);
     } catch (error) {
       const paused = taskController.signal.aborted;
@@ -132,18 +134,24 @@ function startNext(folder: FileSystemDirectoryHandle) {
   })();
 }
 export const needleAssetsManager = {
-  async discover(folder: FileSystemDirectoryHandle) {
-    if (activeTask) return;
-    const installed = { ...state.installed };
+  async discover(folder: FileSystemDirectoryHandle): Promise<void> {
+    if (activeTask) { await activeTask; return this.discover(folder); }
+    if (discovery?.folder === folder) return discovery.promise;
+    const sameFolder = state.folder === folder;
+    const installed = sameFolder ? { ...state.installed } : { engine: false, needle: false, needle2: false, needle3: false };
     const present = { needle: false, needle2: false, needle3: false };
-    const verification = { needle: '', needle2: '', needle3: '' };
-    const saved = { ...state.saved };
+    const verification = { engine: '', needle: '', needle2: '', needle3: '' };
+    const saved = sameFolder ? { ...state.saved } : { engine: 0, needle: 0, needle2: 0, needle3: 0 };
+    const checked = emptyChecked();
     const errors: string[] = [];
-    for (const group of groups) {
+    publish({ folder, installed, present, verification, saved, checked, error: '' });
+    const promise = (async () => { for (const group of groups) {
       try {
         if (group === 'engine') {
-          installed.engine = (await engineAssetFiles(folder, 'Needle', NEEDLE_ENGINE_ASSETS, validFile)).every(Boolean);
+          const found = await engineAssetFiles(folder, 'Needle', NEEDLE_ENGINE_ASSETS, validFile);
+          installed.engine = found.every(Boolean);
           saved.engine = await engineSavedBytes(folder, 'Needle', NEEDLE_ENGINE_ASSETS);
+          if (!installed.engine && saved.engine) verification.engine = `${NEEDLE_ENGINE_ASSETS.filter((_, index) => !found[index]).map(asset => asset.label).join(', ')} need repair.`;
         } else {
           const found = await modelFiles(folder, group);
           installed[group] = !!found.files;
@@ -152,12 +160,22 @@ export const needleAssetsManager = {
           verification[group] = !found.files && found.present ? `${found.invalid?.join(', ') || 'Model files'} need repair.` : '';
         }
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'NotFoundError')) errors.push(`${group}: ${error instanceof Error ? error.message : String(error)}`);
+        if (!(error instanceof DOMException && error.name === 'NotFoundError')) {
+          const message = `${group}: ${error instanceof Error ? error.message : String(error)}`;
+          errors.push(message); verification[group] = message;
+        }
         installed[group] = false;
         if (error instanceof DOMException && error.name === 'NotFoundError') saved[group] = 0;
       }
+      checked[group] = true;
+      if (state.folder !== folder) return;
+      publish({ installed: { ...installed }, checked: { ...checked }, present: { ...present }, verification: { ...verification }, saved: { ...saved } });
     }
-    publish({ folder, installed, present, verification, saved, queue: state.folder === folder ? state.queue : [], queuePaused: state.folder === folder && state.queuePaused, status: errors.length ? 'error' : 'idle', error: errors.join('; '), errorGroup: null, revision: state.revision + 1 });
+    if (state.folder === folder) publish({ installed, checked, present, verification, saved, queue: sameFolder ? state.queue : [], queuePaused: sameFolder && state.queuePaused, status: errors.length ? 'error' : 'idle', error: errors.join('; '), errorGroup: null, revision: state.revision + 1 });
+    })();
+    discovery = { folder, promise };
+    try { await promise; }
+    finally { if (discovery?.promise === promise) discovery = null; }
   },
   async organize(folder: FileSystemDirectoryHandle, onProgress?: (version: NeedleVersion) => void) {
     if (activeTask) throw new Error('Pause Needle downloads before organizing model files.');
@@ -199,7 +217,7 @@ export const needleAssetsManager = {
         for (const asset of NEEDLE_MODEL_ASSETS[group]) { await removeFile(root, legacyName(group, asset.name)); await removeFile(root, `${legacyName(group, asset.name)}.download.json`); }
       }
     } catch (error) { if (!(error instanceof DOMException && error.name === 'NotFoundError')) throw error; }
-    publish({ installed: { ...state.installed, [group]: false }, present: group === 'engine' ? state.present : { ...state.present, [group]: false }, verification: group === 'engine' ? state.verification : { ...state.verification, [group]: '' }, saved: { ...state.saved, [group]: 0 }, errorGroup: state.errorGroup === group ? null : state.errorGroup, revision: state.revision + 1 });
+    publish({ installed: { ...state.installed, [group]: false }, checked: { ...state.checked, [group]: true }, present: group === 'engine' ? state.present : { ...state.present, [group]: false }, verification: { ...state.verification, [group]: '' }, saved: { ...state.saved, [group]: 0 }, errorGroup: state.errorGroup === group ? null : state.errorGroup, revision: state.revision + 1 });
     showToast(`${group === 'engine' ? 'Needle browser engine' : NEEDLE_LABELS[group]} removed.`);
   },
 };

@@ -5,14 +5,22 @@ import type { ModelDownloadState } from './modelDownloadSession';
 import { hasGemmaConsent, hasQwenResearchConsent, visionProjectorDownloadUrl } from './modelLicenses';
 import { compareModelNames } from './modelSort';
 import { capabilityBadges, pendingCapabilities, type CapabilityLedger } from './capabilityLedger';
-import NeedleAssetCard, { NEEDLE_CATALOG } from './NeedleAssetCard';
+import NeedleAssetCard from './NeedleAssetCard';
+import { NEEDLE_CATALOG } from './needleCatalog';
 import { useConfirmDialog } from './ConfirmDialog';
 import { getNeedleAssets, NEEDLE_LABELS, needleAssetsManager, subscribeNeedleAssets } from './needleAssets';
 import { needleLoaded, unloadNeedle } from './needleRuntime';
 import { ensureWritableFolder } from './storage';
 import { isBonsai2Q2BrowserUnsupported, isKnownIncompatibleGranite } from './modelCompatibility';
-import { BROWSER_IMAGE_MODEL_ASSETS, browserImageAssetsManager, browserImageTotal, getBrowserImageAssets, subscribeBrowserImageAssets } from './browserImageAssets';
+import { BROWSER_IMAGE_GROUPS, BROWSER_IMAGE_MODEL_ASSETS, BROWSER_SDXS_ASSETS, BROWSER_SUPRA_ASSETS, browserImageAssetsManager, browserImageDefaultSteps, browserImageModelLabel, browserImageOutputSize, browserImageTotal, getBrowserImageAssets, imageModelAcceptsPreviousEngine, subscribeBrowserImageAssets, type BrowserImageModelGroup } from './browserImageAssets';
 import DownloadRing from './DownloadRing';
+import { matchesModelType, MODEL_TYPES, type ModelTypeFilter } from './modelTypes';
+import { getSpeechAssets, speechAssetsManager, speechTotal, subscribeSpeechAssets } from './speechAssets.ts';
+import { SPEECH_MODELS, speechModel, type SpeechModelId } from './speechManifest.ts';
+import { getTranscriptionAssets, subscribeTranscriptionAssets, transcriptionAssetsManager } from './transcriptionAssets.ts';
+import { TRANSCRIPTION_MODELS, transcriptionTotal, type TranscriptionModelId } from './transcriptionManifest.ts';
+import SherpaArchiveImport from './SherpaArchiveImport.tsx';
+import { getMotionAssets, MOTION_MODELS, motionAssetsManager, motionTotal, subscribeMotionAssets, type MotionModel } from './motionAssets.ts';
 
 type Props = {
   folder: FileSystemDirectoryHandle | null;
@@ -22,9 +30,14 @@ type Props = {
   partialNames: Set<string>;
   partialModels: PartialModel[];
   busy: boolean;
+  modelTypeFilter: ModelTypeFilter;
+  onModelTypeFilterChange: (type: ModelTypeFilter) => void;
   ledger: CapabilityLedger;
   onTest: (model: CatalogModel) => void;
-  onTestImage: () => void;
+  onTestImage: (group: BrowserImageModelGroup) => void;
+  onOpenSpeech: (model: SpeechModelId) => void;
+  onOpenTranscription: (model: TranscriptionModelId) => void;
+  onOpenMotion: (model: MotionModel) => void;
   onRefreshCapabilities: () => void;
   onQueue: (models: CatalogModel[]) => void;
   onQueueVision: (model: CatalogModel) => void;
@@ -38,43 +51,70 @@ type Props = {
 type SortKey = 'family' | 'version' | 'parameters' | 'bytes' | 'contextTokens' | 'capabilities';
 const columns: { key: SortKey; label: string }[] = [
   { key: 'family', label: 'Model' }, { key: 'version', label: 'Version' },
-  { key: 'parameters', label: 'Params' }, { key: 'bytes', label: 'File' },
-  { key: 'contextTokens', label: 'Context' }, { key: 'capabilities', label: 'Capabilities' },
+  { key: 'parameters', label: 'Params / resolution' }, { key: 'bytes', label: 'File' },
+  { key: 'contextTokens', label: 'Context / steps' }, { key: 'capabilities', label: 'Capabilities' },
 ];
 const textTableModels = [
   ...MODEL_CATALOG.map(model => ({ kind: 'gguf' as const, model })),
   ...NEEDLE_CATALOG.map(model => ({ kind: 'needle' as const, model })),
 ];
-const imageCatalogModel = {
-  id: 'sd15-image', family: 'Stable Diffusion', label: 'Stable Diffusion', name: 'SD-1.5-ONNX',
-  company: 'CompVis / Microsoft', country: '—', version: '1.5', parameters: 0,
-  quantization: 'ONNX', bytes: browserImageTotal('model'), contextTokens: 0,
-  license: 'Open RAIL-M', toolUse: 'not-applicable', thinking: 'not-applicable',
-  reason: 'Generate story images directly in the browser with the optional ONNX engine.',
-};
-const tableModels = [...textTableModels, { kind: 'image' as const, model: imageCatalogModel }];
-type TableModel = typeof textTableModels[number];
+const imageCatalogModels = BROWSER_IMAGE_GROUPS.map(group => ({
+  kind: 'image' as const,
+  model: {
+    group, id: `${group}-image`, family: group === 'model' ? 'Stable Diffusion' : group === 'sdxs' ? 'SDXS' : group === 'lcm' ? 'DreamShaper' : group === 'supra-mobile' ? 'Supra-IMG' : 'Tiny-SD', label: group === 'model' ? 'Stable Diffusion' : group === 'lcm' ? 'DreamShaper LCM' : group === 'supra-mobile' ? 'Supra-IMG Mobile' : browserImageModelLabel(group),
+    name: group === 'model' ? 'SD-1.5-ONNX' : group === 'tiny-q4' ? 'Tiny-SD-Q4-ONNX' : group === 'tiny-fp16' ? 'Tiny-SD-FP16-ONNX' : group === 'sdxs' ? 'SDXS-DreamShaper-ONNX' : group === 'lcm' ? 'DreamShaper-8-LCM-INT8-ONNX' : 'Supra2-IMG-Mobile-ONNX',
+    company: group === 'model' ? 'CompVis / Microsoft' : group === 'sdxs' || group === 'lcm' ? 'Lykon / skillsafeai' : group === 'supra-mobile' ? 'SupraLabs / mikhsol' : 'Segmind / cursedhelm', country: '—',
+    companyUrl: group === 'model' ? 'https://github.com/CompVis/stable-diffusion' : group === 'sdxs' || group === 'lcm' ? 'https://huggingface.co/skillsafeai' : group === 'supra-mobile' ? 'https://huggingface.co/mikhsol' : 'https://huggingface.co/segmind',
+    version: group === 'model' ? '1.5' : group === 'lcm' ? '8' : group === 'supra-mobile' ? '2' : '—', parameters: 0,
+    quantization: group === 'tiny-q4' ? 'Q4F16' : group === 'lcm' || group === 'supra-mobile' ? 'INT8' : 'FP16',
+    bytes: browserImageTotal(group), contextTokens: 0,
+    license: group === 'sdxs' ? 'Open RAIL++-M' : group === 'supra-mobile' ? 'Apache 2.0' : 'Open RAIL-M', toolUse: 'not-applicable', thinking: 'not-applicable',
+    reason: group === 'model' ? 'Standard 20-step diffusion model.' : group === 'tiny-q4' ? 'Smallest image download; Q4 export.' : group === 'tiny-fp16' ? 'Higher-precision Tiny-SD export.' : group === 'sdxs' ? 'One-step diffusion for fast generation.' : group === 'lcm' ? 'DreamShaper look in four steps.' : 'Compact 256px rectified-flow model.',
+    source: group === 'model' ? 'https://huggingface.co/microsoft/stable-diffusion-v1.5-webnn' : group === 'sdxs' ? 'https://huggingface.co/skillsafeai/sdxs-512-dreamshaper-onnx-webgpu' : group === 'lcm' ? 'https://huggingface.co/skillsafeai/dreamshaper-8-lcm-onnx-webgpu' : group === 'supra-mobile' ? 'https://huggingface.co/mikhsol/Supra2-IMG-mobile-onnx' : 'https://huggingface.co/cursedhelm/aderpy-deepdreamer-onnx',
+    licenseUrl: group === 'sdxs' ? BROWSER_SDXS_ASSETS[0].url : group === 'supra-mobile' ? BROWSER_SUPRA_ASSETS[0].url : BROWSER_IMAGE_MODEL_ASSETS[0].url,
+  },
+}));
+const speechCatalogModels = SPEECH_MODELS.map(item => ({ kind: 'speech' as const, model: {
+  group: item.id, id: `${item.id}-speech`, family: item.engine === 'kokoro' ? 'Kokoro' : item.engine === 'chatterbox' ? 'Chatterbox' : item.engine === 'qwen' ? 'Qwen3-TTS' : item.engine === 'openvoice' ? 'OpenVoice' : 'Pocket TTS', label: item.label, name: item.path.slice('models/'.length),
+  company: item.engine === 'kokoro' ? 'hexgrad / ONNX Community' : item.engine === 'chatterbox' ? 'Resemble AI' : item.engine === 'qwen' ? 'Alibaba Cloud / ggml-org' : item.engine === 'openvoice' ? 'MyShell.ai / TigreGotico' : 'Kyutai / vlapky', country: item.engine === 'kokoro' ? '—' : item.engine === 'chatterbox' ? 'United States' : item.engine === 'qwen' ? 'China' : item.engine === 'openvoice' ? '—' : 'France', companyUrl: item.engine === 'kokoro' ? 'https://github.com/hexgrad/kokoro' : item.engine === 'chatterbox' ? 'https://www.resemble.ai/' : item.engine === 'qwen' ? 'https://github.com/QwenLM/Qwen3-TTS' : item.engine === 'openvoice' ? 'https://github.com/myshell-ai/OpenVoice' : 'https://kyutai.org/', version: item.engine === 'kokoro' ? '1.0' : item.id === 'chatterbox_q4f16' ? 'Original' : item.engine === 'chatterbox' ? 'Turbo' : item.engine === 'qwen' ? '3' : item.engine === 'openvoice' ? '2' : '2026', parameters: item.engine === 'kokoro' ? 0.082 : item.id === 'chatterbox_q4f16' ? 0.5 : item.engine === 'chatterbox' ? 0.35 : item.engine === 'qwen' ? 1.7 : 0,
+  quantization: item.engine === 'kokoro' ? 'Q8' : item.engine === 'chatterbox' ? 'Q4F16' : item.engine === 'qwen' ? 'Q4_K_M' : item.engine === 'openvoice' ? 'Q8' : 'INT8', bytes: item.bytes, contextTokens: 0, license: item.engine === 'kokoro' || item.engine === 'qwen' ? 'Apache 2.0' : item.engine === 'chatterbox' || item.engine === 'openvoice' ? 'MIT' : 'CC BY 4.0', toolUse: 'not-applicable', thinking: 'not-applicable',
+  reason: item.engine === 'kokoro' ? 'Expressive English speech with selectable voices.' : item.id === 'chatterbox_q4f16' ? 'Voice cloning with adjustable expression.' : item.engine === 'chatterbox' ? 'Fast voice cloning with sound tags.' : item.engine === 'qwen' ? 'Multilingual voice cloning with a larger browser runtime.' : item.engine === 'openvoice' ? 'Converts existing speech into a reference voice; pair with any TTS model.' : `${item.language} speech with built-in voices or a short voice recording.`, source: item.source, licenseUrl: item.licenseUrl,
+} }));
+const transcriptionCatalogModels = TRANSCRIPTION_MODELS.map(item => ({ kind: 'transcription' as const, model: { id: item.id, family: item.family, label: item.label, name: item.path.slice('models/'.length), group: item.id, company: item.company, country: item.country, companyUrl: item.id === 'sherpa' ? 'https://github.com/k2-fsa/sherpa-onnx' : `https://huggingface.co/${item.repo}`, version: item.version, parameters: item.parametersB, quantization: item.quantization, bytes: transcriptionTotal(item.id), contextTokens: 0, license: item.license, toolUse: 'not-applicable', thinking: 'not-applicable', reason: item.description, source: item.id === 'sherpa' ? `https://github.com/k2-fsa/sherpa-onnx/releases/tag/${item.revision}` : `https://huggingface.co/${item.repo}/tree/${item.revision}`, licenseUrl: item.licenseUrl } }));
+const motionCatalogModels = (['depth', 'rife', 'pose', 'vector', 'tripo'] as const).map(id => ({ kind: 'motion' as const, model: {
+  id: `${id}-motion`, family: id === 'depth' ? 'Depth Anything' : id === 'rife' ? 'RIFE' : id === 'pose' ? 'Pose Landmarker' : id === 'vector' ? 'VTracer' : 'TripoSR', label: MOTION_MODELS[id].label,
+  name: MOTION_MODELS[id].path.slice('models/'.length), group: id, company: id === 'depth' ? 'Depth Anything / ONNX Community' : id === 'rife' ? 'hzwer / Edge Tools' : id === 'pose' ? 'Google' : id === 'vector' ? 'Visioncortex' : 'Tripo AI / Stability AI', country: id === 'pose' ? 'United States' : '—', companyUrl: MOTION_MODELS[id].source,
+  version: id === 'depth' ? '2 Small' : id === 'rife' ? '4.9' : id === 'pose' ? 'Full' : id === 'vector' ? '1.0 alpha 4' : 'Q8 export', parameters: 0, quantization: id === 'depth' ? 'Q4' : id === 'rife' ? 'FP32' : id === 'pose' ? 'FP16' : id === 'vector' ? 'WASM' : 'INT8', bytes: motionTotal(id), contextTokens: 0,
+  license: MOTION_MODELS[id].license, toolUse: 'not-applicable', thinking: 'not-applicable', reason: MOTION_MODELS[id].purpose,
+  source: MOTION_MODELS[id].source, licenseUrl: id === 'depth' ? 'https://github.com/DepthAnything/Depth-Anything-V2/blob/main/LICENSE' : id === 'rife' ? 'https://huggingface.co/edgetools/rife/blob/main/LICENSE' : id === 'pose' ? 'https://github.com/google-ai-edge/mediapipe/blob/master/LICENSE' : id === 'vector' ? 'https://github.com/visioncortex/vtracer/blob/master/LICENSE' : 'https://github.com/VAST-AI-Research/TripoSR/blob/main/LICENSE',
+} }));
+const tableModels = [...textTableModels, ...imageCatalogModels, ...speechCatalogModels, ...transcriptionCatalogModels, ...motionCatalogModels];
+type TableModel = typeof tableModels[number];
 const unique = (key: 'family' | 'version' | 'parameters' | 'license' | 'company' | 'country') =>
   [...new Set(tableModels.map(row => String(row.model[key])))].filter(value => key !== 'parameters' || value !== '0').sort(compareModelNames);
 const formatContext = (tokens: number) => `${Math.round(tokens / 1024)}K`;
 const hasMatchingVariant = (model: CatalogModel) => MODEL_CATALOG.some(other => other.id !== model.id && other.family === model.family && other.version === model.version && other.parameters === model.parameters);
 
-export default function ModelCatalog({ folder, download, fileSizes, licensedModels, partialNames, partialModels, busy, ledger, onTest, onTestImage, onRefreshCapabilities, onQueue, onQueueVision, onPrioritizeLicense, onResumeQueued, onRemoveQueued, onDiscard, onLicenseConsentNeeded }: Props) {
+export default function ModelCatalog({ folder, download, fileSizes, licensedModels, partialNames, partialModels, busy, modelTypeFilter, onModelTypeFilterChange, ledger, onTest, onTestImage, onOpenSpeech, onOpenTranscription, onOpenMotion, onRefreshCapabilities, onQueue, onQueueVision, onPrioritizeLicense, onResumeQueued, onRemoveQueued, onDiscard, onLicenseConsentNeeded }: Props) {
   const detailsDialog = useRef<HTMLDialogElement>(null);
   const [detailsRow, setDetailsRow] = useState<TableModel | null>(null);
   const [detailsError, setDetailsError] = useState('');
   const needleAssets = useSyncExternalStore(subscribeNeedleAssets, getNeedleAssets);
   const browserImage = useSyncExternalStore(subscribeBrowserImageAssets, getBrowserImageAssets);
+  const speech = useSyncExternalStore(subscribeSpeechAssets, getSpeechAssets);
+  const transcription = useSyncExternalStore(subscribeTranscriptionAssets, getTranscriptionAssets);
+  const motionAssets = useSyncExternalStore(subscribeMotionAssets, getMotionAssets);
   const [imageError, setImageError] = useState('');
+  const [speechError, setSpeechError] = useState('');
   const confirmAction = useConfirmDialog();
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState({ family: '', company: '', country: '', version: '', parameters: '', license: '', toolUse: '', thinking: '', maxBytes: '', minContext: '' });
   const [sort, setSort] = useState<{ key: SortKey; direction: 1 | -1 }>({ key: 'family', direction: 1 });
   const installed = (model: CatalogModel) => !!fileSizes[model.name] && !partialNames.has(model.name);
-  const available = MODEL_CATALOG.filter(model => model.runtime !== 'local-server' && !installed(model) && !download.queue.some(item => item.url === model.url) && !(download.status === 'downloading' && download.url === model.url));
-  const visible = useMemo(() => tableModels.filter(({ model }) => {
+  const visible = useMemo(() => tableModels.filter(({ kind, model }) => {
     const search = `${model.family} ${model.company} ${model.country} ${model.version} ${model.parameters} ${model.quantization} ${model.license} ${model.reason}`.toLowerCase();
-    return (!query || search.includes(query.toLowerCase().trim()))
+    return matchesModelType(modelTypeFilter, kind === 'image' ? 'image' : kind === 'speech' ? 'speech' : kind === 'transcription' ? 'transcription' : kind === 'motion' ? model.group === 'tripo' ? 'mesh' : model.group === 'pose' ? 'pose' : model.group === 'vector' ? 'vector' : 'video' : 'text')
+      && (!query || search.includes(query.toLowerCase().trim()))
       && (!filters.family || model.family === filters.family)
       && (!filters.company || model.company === filters.company)
       && (!filters.country || model.country === filters.country)
@@ -92,7 +132,12 @@ export default function ModelCatalog({ folder, download, fileSizes, licensedMode
     const compared = typeof left === 'number' && typeof right === 'number'
       ? left - right : compareModelNames(String(left), String(right));
     return compared * sort.direction || compareModelNames(a.model.label, b.model.label);
-  }), [query, filters, sort, ledger]);
+  }), [query, filters, sort, ledger, modelTypeFilter]);
+  const available = visible.filter(row => row.kind === 'gguf').map(row => row.model).filter(model => model.runtime !== 'local-server' && !installed(model) && !download.queue.some(item => item.url === model.url) && !(download.status === 'downloading' && download.url === model.url));
+  const availableImages = visible.filter(row => row.kind === 'image').map(row => row.model.group).filter(group => browserImage.folder !== folder || !browserImage.installed[group] && browserImage.active !== group && !browserImage.queue.includes(group));
+  const availableTranscription = visible.filter(row => row.kind === 'transcription').map(row => row.model.group).filter(id => id !== 'sherpa' && (transcription.folder !== folder || !transcription.installed[id] && transcription.active !== id && !transcription.queue.includes(id)));
+  const availableSpeech = visible.filter(row => row.kind === 'speech').map(row => row.model.group).filter(group => speech.folder === folder && speech.checked[group] && !speech.installed[group] && speech.active !== group && !speech.queue.includes(group));
+  const availableMotion = visible.filter(row => row.kind === 'motion').map(row => row.model.group).filter(id => motionAssets.folder !== folder || !motionAssets.installed[id] && motionAssets.active !== id && !motionAssets.queue.includes(id));
   const changeFilter = (key: keyof typeof filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const changeSort = (key: SortKey) => setSort(current => ({ key, direction: current.key === key && current.direction === 1 ? -1 : 1 }));
   const queue = (items: CatalogModel[]) => {
@@ -127,16 +172,29 @@ export default function ModelCatalog({ folder, download, fileSizes, licensedMode
       detailsDialog.current?.close();
     } catch (reason) { setDetailsError(reason instanceof Error ? reason.message : String(reason)); }
   };
-  const startImageDownload = async () => {
+  const queueImages = async (groups: BrowserImageModelGroup[]) => {
     if (!folder) return;
     setImageError('');
     try {
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save the image model.');
-      if (browserImage.folder !== folder || !browserImage.installed.engine) browserImageAssetsManager.queue(folder, 'engine');
-      browserImageAssetsManager.queue(folder, 'model');
+      if (browserImage.folder !== folder || !browserImage.installed.engine && !browserImage.legacyInstalled || groups.some(group => !imageModelAcceptsPreviousEngine(group)) && !browserImage.installed.engine) browserImageAssetsManager.queue(folder, 'engine');
+      for (const group of groups) browserImageAssetsManager.queue(folder, group);
       if (browserImage.paused && browserImage.folder === folder) browserImageAssetsManager.resume(folder);
     } catch (error) { setImageError(error instanceof Error ? error.message : String(error)); }
   };
+  const startImageDownload = (group: BrowserImageModelGroup) => queueImages([group]);
+  const queueSpeech = async (groups: SpeechModelId[]) => {
+    if (!folder) return;
+    setImageError('');
+    try {
+      if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save speech models.');
+      for (const engine of new Set(groups.map(group => speechModel(group).engine === 'kokoro' ? 'kokoro_engine' as const : speechModel(group).engine === 'chatterbox' ? 'chatterbox_engine' as const : speechModel(group).engine === 'qwen' ? 'qwen_engine' as const : speechModel(group).engine === 'openvoice' ? 'openvoice_engine' as const : 'engine' as const))) if (speech.folder !== folder || !speech.installed[engine]) speechAssetsManager.queue(folder, engine);
+      for (const group of groups) speechAssetsManager.queue(folder, group);
+      if (speech.paused && speech.folder === folder) speechAssetsManager.resume(folder);
+    } catch (error) { setImageError(error instanceof Error ? error.message : String(error)); }
+  };
+  const queueTranscription = async (ids: TranscriptionModelId[]) => { if (!folder) return; setSpeechError(''); try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save transcription files.'); if (ids.some(id => id !== 'sherpa') && !transcription.installed.engine) transcriptionAssetsManager.queue(folder, 'engine'); for (const id of ids) if (transcription.folder !== folder || !transcription.installed[id]) transcriptionAssetsManager.queue(folder, id); if (transcription.paused) transcriptionAssetsManager.resume(folder); } catch (error) { setSpeechError(error instanceof Error ? error.message : String(error)); } };
+  const queueMotion = async (ids: MotionModel[]) => { if (!folder) return; setImageError(''); try { if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to save graphics and motion models.'); if (ids.some(id => id === 'depth' || id === 'rife' || id === 'tripo') && (browserImage.folder !== folder || !browserImage.installed.engine)) browserImageAssetsManager.queue(folder, 'engine'); if (ids.includes('pose') && (motionAssets.folder !== folder || !motionAssets.installed.pose_engine)) motionAssetsManager.queue(folder, 'pose_engine'); if (ids.includes('vector') && (motionAssets.folder !== folder || !motionAssets.installed.vector_engine)) motionAssetsManager.queue(folder, 'vector_engine'); for (const id of ids) motionAssetsManager.queue(folder, id); if (motionAssets.paused) motionAssetsManager.resume(folder); } catch (error) { setImageError(error instanceof Error ? error.message : String(error)); } };
   const detailRecord = detailsRow && ledger.models[`models/${detailsRow.model.name}`];
   const detailTests = detailRecord ? Object.entries(detailRecord.tests).sort((a, b) => a[0].localeCompare(b[0])) : [];
   const detailWarnings = detailsRow?.kind === 'gguf' ? detailsRow.model.warnings : undefined;
@@ -144,6 +202,7 @@ export default function ModelCatalog({ folder, download, fileSizes, licensedMode
   return <section className="model-catalog" aria-label="Model catalog">
     <div className="model-catalog-toolbar"><div className="model-catalog-filterbar">
       <label><input type="search" aria-label="Search models" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search" /></label>
+      <label><select aria-label="Model type" value={modelTypeFilter} onChange={event => onModelTypeFilterChange(event.target.value as ModelTypeFilter)}><option value="all">All types</option>{MODEL_TYPES.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}</select></label>
       <details><summary>Filters</summary><div className="model-catalog-filters">
       {(['family', 'company', 'country', 'version', 'parameters', 'license'] as const).map(key => <label key={key}><span>{{ family: 'Model', company: 'Company', country: 'Country', version: 'Version', parameters: 'Params', license: 'License' }[key]}</span><select value={filters[key]} onChange={event => changeFilter(key, event.target.value)}><option value="">All</option>{unique(key).map(value => <option key={value} value={value}>{key === 'parameters' ? `${value}B` : value}</option>)}</select></label>)}
       <label><span>Tools</span><select value={filters.toolUse} onChange={event => changeFilter('toolUse', event.target.value)}><option value="">All</option><option value="documented">Documented</option><option value="confirmed-browser-test">Passed browser test</option><option value="confirmed-constrained">Constrained browser test</option><option value="unconfirmed">Unconfirmed</option><option value="failed-browser-test">Failed browser test</option></select></label>
@@ -152,24 +211,52 @@ export default function ModelCatalog({ folder, download, fileSizes, licensedMode
       <label><span>Min context</span><select value={filters.minContext} onChange={event => changeFilter('minContext', event.target.value)}><option value="">All</option><option value="65536">64K</option><option value="131072">128K</option></select></label>
       </div></details>
     </div><div className="model-catalog-actions">
-      <button className="button secondary compact" type="button" disabled={!folder} title="Reload models/capabilities.json from the connected folder" onClick={onRefreshCapabilities}>Refresh results</button>
-      <button className="button secondary compact" type="button" disabled={!folder || busy || !available.length} onClick={() => queue(available)}>Queue models</button>
+      <button className="button secondary compact" type="button" disabled={!folder} title="Recheck downloaded files and saved capabilities" onClick={() => { onRefreshCapabilities(); if (folder) { setSpeechError(''); void speechAssetsManager.discover(folder).catch(error => setSpeechError(error instanceof Error ? error.message : String(error))); void transcriptionAssetsManager.discover(folder).catch((error: unknown) => setSpeechError(error instanceof Error ? error.message : String(error))); void motionAssetsManager.discover(folder).catch(error => setImageError(error instanceof Error ? error.message : String(error))); } }}>Refresh results</button>
+      <button className="button secondary compact" type="button" disabled={!folder || busy || !(modelTypeFilter === 'image' ? availableImages.length : modelTypeFilter === 'speech' ? availableSpeech.length : modelTypeFilter === 'transcription' ? availableTranscription.length : modelTypeFilter === 'video' || modelTypeFilter === 'pose' || modelTypeFilter === 'vector' || modelTypeFilter === 'mesh' ? availableMotion.length : available.length)} onClick={() => modelTypeFilter === 'image' ? void queueImages(availableImages) : modelTypeFilter === 'speech' ? void queueSpeech(availableSpeech) : modelTypeFilter === 'transcription' ? void queueTranscription(availableTranscription) : modelTypeFilter === 'video' || modelTypeFilter === 'pose' || modelTypeFilter === 'vector' || modelTypeFilter === 'mesh' ? void queueMotion(availableMotion) : queue(available)}>{modelTypeFilter === 'image' ? 'Queue images' : 'Queue models'}</button>
     </div></div>
     <div className="model-catalog-scroll"><table className="model-catalog-table"><thead><tr><th scope="col" aria-sort={sort.key === 'family' ? sort.direction === 1 ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort('family')}>Model{sort.key === 'family' ? sort.direction === 1 ? ' ↑' : ' ↓' : ''}</button></th><th scope="col">Download</th>{columns.slice(1).map(column => <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction === 1 ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => changeSort(column.key)}>{column.label}{sort.key === column.key ? sort.direction === 1 ? ' ↑' : ' ↓' : ''}</button></th>)}</tr></thead>{visible.map(row => {
+      if (row.kind === 'motion') {
+        const id = row.model.group;
+        const installed = motionAssets.folder === folder && motionAssets.installed[id];
+        const active = motionAssets.active === id;
+        const queued = motionAssets.queue.includes(id);
+        const bytes = motionAssets.folder === folder ? motionAssets.saved[id] : 0;
+        return <tbody key={row.model.id}><tr><td className="model-catalog-name"><strong>{row.model.family}</strong></td><td><div className="model-catalog-buttons">{!installed && !active && !queued && !bytes && <button className="button secondary catalog-action-button" type="button" title={`Download ${row.model.label}`} disabled={!folder} onClick={() => void queueMotion([id])}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={motionTotal(id)} label={`${row.model.label} download progress`} action={active ? 'pause' : motionAssets.paused || !queued ? 'resume' : undefined} onAction={active ? () => motionAssetsManager.pause() : () => { if (folder) void queueMotion([id]); }}/>}</div></td><td>{row.model.version}</td><td>{row.model.quantization}</td><td>{(row.model.bytes / 1e6).toFixed(1)} MB</td><td>{id === 'pose' ? '33 joints' : id === 'vector' ? 'SVG' : id === 'tripo' ? '3D mesh' : 'Video'}</td><td className="model-catalog-capabilities"><span className="capability-icons"><span className="capability-icon" role="img" title={id === 'depth' ? 'Depth estimation' : id === 'rife' ? 'Frame interpolation' : id === 'pose' ? 'Pose detection' : id === 'vector' ? 'Raster to SVG' : 'Image to 3D'}>{id === 'pose' ? '🦴' : id === 'vector' ? '✒️' : id === 'tripo' ? '🧊' : '🎞️'}</span><button className="capability-info-button" type="button" title={`Details for ${row.model.label}`} onClick={() => showDetails(row)}>ⓘ</button>{installed && <button className="capability-test-button" type="button" title={`Open ${row.model.label}`} onClick={() => onOpenMotion(id)}>🧪</button>}</span></td></tr><tr className="model-catalog-detail"><td colSpan={7}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">{row.model.company} · {row.model.reason} <a href={row.model.source} target="_blank" rel="noreferrer">Model</a> · <a href={row.model.licenseUrl} target="_blank" rel="noreferrer">{row.model.license}</a></span></div></td></tr></tbody>;
+      }
+      if (row.kind === 'transcription') {
+        const id = row.model.group;
+        const checked = transcription.folder === folder && transcription.checked[id];
+        const installed = transcription.folder === folder && transcription.installed[id];
+        const active = transcription.folder === folder && transcription.active === id;
+        const queued = transcription.folder === folder && transcription.queue.includes(id);
+        const bytes = transcription.folder === folder ? transcription.saved[id] : 0;
+        return <tbody key={row.model.id}><tr><td className="model-catalog-name"><strong>{row.model.label}</strong></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && id === 'sherpa' && !active && !transcription.sherpaArchiveReady && <SherpaArchiveImport folder={folder} compact/>}{checked && !installed && id !== 'sherpa' && !active && !queued && bytes === 0 && <button className="button secondary catalog-action-button" type="button" data-tooltip={`Download ${row.model.label}`} aria-label={`Download ${row.model.label}`} disabled={!folder} onClick={() => void queueTranscription([id])}>📥</button>}{!installed && (active || (id === 'sherpa' ? transcription.sherpaArchiveReady : queued || bytes > 0)) && <DownloadRing bytes={bytes} total={transcriptionTotal(id)} label={`${row.model.label} download progress`} action={active ? 'pause' : transcription.paused || !queued ? 'resume' : undefined} onAction={active ? () => transcriptionAssetsManager.pause() : () => void queueTranscription([id])}/>}</div></td><td>{row.model.version}</td><td>{row.model.quantization}</td><td>{(row.model.bytes / 1e9).toFixed(2)} GB</td><td>English</td><td className="model-catalog-capabilities"><span className="capability-icons"><span className="capability-icon" role="img" data-tooltip="Audio transcription" aria-label="Audio transcription">🎧</span><button className="capability-info-button" type="button" title="Model details" onClick={() => showDetails(row)}>ⓘ</button>{installed && <button className="capability-test-button" type="button" title="Open transcription" onClick={() => onOpenTranscription(id)}>🧪</button>}</span></td></tr><tr className="model-catalog-detail"><td colSpan={7}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">{row.model.reason} <a href={row.model.source} target="_blank" rel="noreferrer">Model files</a> · <a href={row.model.licenseUrl} target="_blank" rel="noreferrer">{row.model.license}</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{transcription.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{speechError && <p className="model-error" role="alert">{speechError}</p>}</td></tr></tbody>;
+      }
+      if (row.kind === 'speech') {
+        const group = row.model.group;
+        const checked = speech.folder === folder && speech.checked[group];
+        const installed = speech.folder === folder && speech.installed[group];
+        const active = speech.folder === folder && speech.active === group;
+        const queued = speech.folder === folder && speech.queue.includes(group);
+        const bytes = speech.folder === folder ? speech.saved[group] : 0;
+        const resume = !active && (speech.paused && speech.queue[0] === group || !queued && bytes > 0);
+        return <tbody key={row.model.id}><tr><td className="model-catalog-name"><strong>{row.model.label}</strong></td><td><div className="model-catalog-buttons">{!checked && !active && !queued && <span className="muted">Checking…</span>}{checked && !installed && !active && !queued && bytes === 0 && <button className="button secondary catalog-action-button" type="button" data-tooltip={`Download ${row.model.label}`} aria-label={`Download ${row.model.label}`} disabled={!folder} onClick={() => void queueSpeech([group])}>📥</button>}{!installed && (active || queued || bytes > 0) && <DownloadRing bytes={bytes} total={speechTotal(group)} label={`${row.model.label} download progress`} action={active ? 'pause' : resume ? 'resume' : undefined} onAction={active ? () => speechAssetsManager.pause() : resume ? () => void queueSpeech([group]) : undefined}/>}</div></td><td>{row.model.version}</td><td>{row.model.quantization}</td><td>{(row.model.bytes / 1e9).toFixed(2)} GB</td><td>{SPEECH_MODELS.find(item => item.id === group)?.language}</td><td className="model-catalog-capabilities"><span className="capability-icons">{group === 'openvoice_v2_q8' ? <span className="capability-icon" role="img" tabIndex={0} data-tooltip="Voice conversion" aria-label="Voice conversion">🔄</span> : <span className="capability-icon" role="img" tabIndex={0} data-tooltip="Text to speech" aria-label="Text to speech">🔊</span>}{group !== 'kokoro_q8' && <span className="capability-icon" role="img" tabIndex={0} data-tooltip="Voice cloning from a recording" aria-label="Voice cloning from a recording">🎙️</span>}{group !== 'openvoice_v2_q8' && <span className="capability-icon" role="img" tabIndex={0} data-tooltip={group === 'qwen3_tts_17b_q4' ? 'Plays completed passages while generating' : 'Plays audio chunks while generating'} aria-label={group === 'qwen3_tts_17b_q4' ? 'Passage playback during generation' : 'Chunk playback during generation'}>🌊</span>}<button className="capability-info-button" type="button" title={`Details for ${row.model.label}`} onClick={() => showDetails(row)}>ⓘ</button>{installed && <button className="capability-test-button" type="button" title={`Open ${row.model.label} speech test`} disabled={!folder} onClick={() => onOpenSpeech(group)}>🧪</button>}</span></td></tr><tr className="model-catalog-detail"><td colSpan={7}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">{row.model.reason} <a href={row.model.source} target="_blank" rel="noreferrer">Model files</a> · <a href={row.model.licenseUrl} target="_blank" rel="noreferrer">{row.model.license}</a></span><span className="model-catalog-detail-state">{queued && !active && <span>{speech.paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{(speech.checkErrors[group] || speechError) && <p className="model-error" role="alert">Could not check files: {speech.checkErrors[group] || speechError}</p>}</td></tr></tbody>;
+      }
       if (row.kind === 'image') {
-        const installed = browserImage.folder === folder && browserImage.installed.model;
-        const active = browserImage.folder === folder && browserImage.active === 'model';
-        const queued = browserImage.folder === folder && browserImage.queue.includes('model');
-        const bytes = browserImage.folder === folder ? browserImage.saved.model : 0;
+        const group = row.model.group;
+        const installed = browserImage.folder === folder && browserImage.installed[group];
+        const active = browserImage.folder === folder && browserImage.active === group;
+        const queued = browserImage.folder === folder && browserImage.queue.includes(group);
+        const bytes = browserImage.folder === folder ? browserImage.saved[group] : 0;
         const paused = browserImage.paused && queued;
-        const resumeHere = paused && browserImage.queue[0] === 'model';
+        const resumeHere = paused && browserImage.queue[0] === group;
         const ringAction = active ? 'pause' : resumeHere || !queued && bytes > 0 ? 'resume' : undefined;
         return <tbody key={row.model.id}><tr>
-          <td className="model-catalog-name image-model-name"><strong>Stable Diffusion</strong></td>
-          <td className="model-catalog-control"><div className="model-catalog-control-line"><div className="model-catalog-buttons">{!installed && !active && !queued && bytes === 0 && <button className="button secondary catalog-action-button" type="button" data-tooltip="Download Stable Diffusion" aria-label="Download Stable Diffusion" disabled={!folder} onClick={() => void startImageDownload()}>📥</button>}{queued && !resumeHere && <span className="muted">Queued</span>}{!installed && (active || bytes > 0 || resumeHere) && <DownloadRing bytes={bytes} total={row.model.bytes} label="Stable Diffusion download progress" action={ringAction} onAction={ringAction === 'pause' ? () => browserImageAssetsManager.pause() : ringAction === 'resume' ? () => void startImageDownload() : undefined}/>}</div></div></td>
-          <td>1.5</td><td>—</td><td>{(row.model.bytes / 1e9).toFixed(2)} GB</td><td>—</td>
-          <td className="model-catalog-capabilities"><span className="capability-icons"><span className="capability-icon" role="img" aria-label="Image generation" tabIndex={0} data-tooltip="Image generation">🎨</span>{installed && <button className="capability-test-button" type="button" disabled={!folder || busy} title="Load and inspect image generation" aria-label="Inspect Stable Diffusion features" onClick={onTestImage}>🧪</button>}</span></td>
-        </tr><tr className="model-catalog-detail"><td colSpan={7}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">{row.model.reason} <a href="https://huggingface.co/microsoft/stable-diffusion-v1.5-webnn" target="_blank" rel="noreferrer">Model files</a> · <a href={BROWSER_IMAGE_MODEL_ASSETS[0].url} target="_blank" rel="noreferrer">{row.model.license}</a></span><span className="model-catalog-detail-state">{!installed && queued && !active && <span className="model-catalog-status">{paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{(imageError || paused && browserImage.error) && <p className="model-error" role="alert">{imageError || browserImage.error}</p>}</td></tr></tbody>;
+          <td className="model-catalog-name image-model-name"><strong>{row.model.label}</strong></td>
+          <td className="model-catalog-control"><div className="model-catalog-control-line"><div className="model-catalog-buttons">{browserImage.folder === folder && browserImage.checked[group] && !installed && !active && !queued && bytes === 0 && <button className="button secondary catalog-action-button" type="button" data-tooltip={`Download ${row.model.label}`} aria-label={`Download ${row.model.label}`} disabled={!folder} onClick={() => void startImageDownload(group)}>📥</button>}{queued && !resumeHere && <span className="muted">Queued</span>}{!installed && (active || bytes > 0 || resumeHere) && <DownloadRing bytes={bytes} total={row.model.bytes} label={`${row.model.label} download progress`} action={ringAction} onAction={ringAction === 'pause' ? () => browserImageAssetsManager.pause() : ringAction === 'resume' ? () => void startImageDownload(group) : undefined}/>}</div></div></td>
+          <td>{row.model.version}</td><td><span data-tooltip="Output resolution used by this app" aria-label={`Output resolution ${browserImageOutputSize(group)} by ${browserImageOutputSize(group)} pixels`}>{browserImageOutputSize(group)}×{browserImageOutputSize(group)}</span></td><td>{(row.model.bytes / 1e9).toFixed(2)} GB</td><td><span data-tooltip={group === 'sdxs' || group === 'lcm' ? 'Fixed image steps' : 'Default denoising steps; adjustable in Image generator settings'} aria-label={`${browserImageDefaultSteps(group)} denoising steps`}>{browserImageDefaultSteps(group)} {group === 'sdxs' ? 'step' : 'default'}</span></td>
+          <td className="model-catalog-capabilities"><span className="capability-icons"><span className="capability-icon" role="img" aria-label="Image generation" tabIndex={0} data-tooltip="Image generation">🎨</span><button className="capability-info-button" type="button" title={`Details for ${row.model.label}`} aria-label={`Details for ${row.model.label}`} onClick={() => showDetails(row)}>ⓘ</button>{installed && <button className="capability-test-button" type="button" disabled={!folder || busy} title="Load and inspect image generation" aria-label={`Inspect ${row.model.label} features`} onClick={() => onTestImage(group)}>🧪</button>}</span></td>
+        </tr><tr className="model-catalog-detail"><td colSpan={7}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">{row.model.company} · {row.model.reason} <a href={row.model.source} target="_blank" rel="noreferrer">Model files</a> · <a href={row.model.licenseUrl} target="_blank" rel="noreferrer">{row.model.license}</a></span><span className="model-catalog-detail-state">{!installed && queued && !active && <span className="model-catalog-status">{paused ? 'Queued · paused' : 'Queued'}</span>}</span></div>{(imageError || paused && browserImage.error) && <p className="model-error" role="alert">{imageError || browserImage.error}</p>}</td></tr></tbody>;
       }
       if (row.kind === 'needle') return <NeedleAssetCard key={row.model.id} folder={folder} group={row.model.id} inTable onDetails={() => showDetails(row)}/>;
       const model = row.model;
@@ -203,9 +290,12 @@ export default function ModelCatalog({ folder, download, fileSizes, licensedMode
     })}</table>{!visible.length && <p className="model-catalog-empty">No models match these filters.</p>}</div>
     <dialog ref={detailsDialog} className="model-limit-dialog model-details-dialog" aria-labelledby="model-details-title">
       {detailsRow && <><h2 id="model-details-title">{detailsRow.model.label}</h2><p>{detailsRow.model.reason}</p>
-        <p>{detailsRow.model.company}{detailsRow.model.country !== '—' ? ` · ${detailsRow.model.country}` : ''} · {detailsRow.model.version} · {detailsRow.kind === 'needle' ? `${Math.round(detailsRow.model.parameters * 1000)}M` : `${detailsRow.model.parameters}B`} parameters · {detailsRow.model.quantization} · {detailsRow.kind === 'needle' ? `${(detailsRow.model.bytes / 1e6).toFixed(1)} MB` : `${(detailsRow.model.bytes / 1e9).toFixed(2)} GB`} · {formatContext(detailsRow.model.contextTokens)} published context</p>
+        {detailsRow.kind === 'image' ? <p>{detailsRow.model.company} · {browserImageOutputSize(detailsRow.model.group)}×{browserImageOutputSize(detailsRow.model.group)} output · {browserImageDefaultSteps(detailsRow.model.group)} denoising {browserImageDefaultSteps(detailsRow.model.group) === 1 ? 'step' : 'steps'} · {(detailsRow.model.bytes / 1e9).toFixed(2)} GB · {detailsRow.model.quantization}</p> : detailsRow.kind === 'transcription' ? <p>{detailsRow.model.company} · English · {(detailsRow.model.bytes / 1e6).toFixed(1)} MB · {detailsRow.model.quantization} · audio transcription</p> : detailsRow.kind === 'speech' ? <p>{detailsRow.model.company} · {SPEECH_MODELS.find(item => item.id === detailsRow.model.group)?.language} · {(detailsRow.model.bytes / 1e6).toFixed(1)} MB · {detailsRow.model.quantization} · {detailsRow.model.group === 'kokoro_q8' ? 'built-in voices' : 'voice samples supported'}</p> : <p>{detailsRow.model.company}{detailsRow.model.country !== '—' ? ` · ${detailsRow.model.country}` : ''} · {detailsRow.model.version} · {detailsRow.kind === 'needle' ? `${Math.round(detailsRow.model.parameters * 1000)}M` : `${detailsRow.model.parameters}B`} parameters · {detailsRow.model.quantization} · {detailsRow.kind === 'needle' ? `${(detailsRow.model.bytes / 1e6).toFixed(1)} MB` : `${(detailsRow.model.bytes / 1e9).toFixed(2)} GB`} · {formatContext(detailsRow.model.contextTokens)} published context</p>}
+        {detailsRow.kind === 'image' && <p>Runs in the browser with the ONNX Image engine and a WebGPU adapter that supports shader-f16.</p>}
+        {detailsRow.kind === 'speech' && <p>{detailsRow.model.group === 'openvoice_v2_q8' ? '🔄 Converts existing speech into a saved reference voice.' : '🔊 Text to speech ·'} {detailsRow.model.group === 'kokoro_q8' ? 'Built-in voices' : '🎙️ Voice cloning from a recording'}{detailsRow.model.group === 'openvoice_v2_q8' ? ' · Audio is available after processing.' : detailsRow.model.group === 'qwen3_tts_17b_q4' ? ' · 🌊 Completed passages can play while later passages generate.' : ' · 🌊 Audio can play in chunks while the rest is generated.'}{detailsRow.model.group === 'chatterbox_q4f16' ? ' Expression can be adjusted; listen to judge the result.' : detailsRow.model.group === 'chatterbox_turbo_q4f16' ? ' Supports sound tags such as [laugh].' : ''}</p>}
+        {detailsRow.kind === 'image' && detailsRow.model.group === 'tiny-q4' && <p>This Q4 export has produced gray pattern artifacts in browser tests. Try Tiny-SD FP16 for better image quality.</p>}
         {detailWarnings?.length ? <section><h3>What to know</h3><ul>{detailWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></section> : null}
-        <section><h3>Saved checks</h3>{detailTests.length ? <ul className="model-details-tests">{detailTests.map(([id, result]) => <li key={id}><strong>{result.result === 'passed' ? '✅' : result.result === 'failed' ? '❌' : '❔'} {ledger.capabilities.find(item => item.id === id)?.label || id}</strong><span>{result.detail}{result.source === 'catalog-seed' ? ' · Imported result; rerun due.' : ''}</span></li>)}</ul> : <p>No browser checks saved for this model.</p>}</section>
+        {detailsRow.kind !== 'image' && detailsRow.kind !== 'speech' && detailsRow.kind !== 'transcription' && <section><h3>Saved checks</h3>{detailTests.length ? <ul className="model-details-tests">{detailTests.map(([id, result]) => <li key={id}><strong>{result.result === 'passed' ? '✅' : result.result === 'failed' ? '❌' : '❔'} {ledger.capabilities.find(item => item.id === id)?.label || id}</strong><span>{result.detail}{result.source === 'catalog-seed' ? ' · Imported result; rerun due.' : ''}</span></li>)}</ul> : <p>No browser checks saved for this model.</p>}</section>}
         <p><a href={detailsRow.model.source} target="_blank" rel="noreferrer">Model file</a> · <a href={detailsRow.model.licenseUrl} target="_blank" rel="noreferrer">{detailsRow.model.license}</a> · <a href={detailsRow.model.companyUrl} target="_blank" rel="noreferrer">Developer</a></p>
         {detailsRow.kind === 'needle' && needleAssets.folder === folder && needleAssets.installed[detailsRow.model.id] && <button className="button danger compact" type="button" onClick={() => void removeNeedle()}>Remove model files</button>}
         {detailsError && <p className="model-error" role="alert">{detailsError}</p>}

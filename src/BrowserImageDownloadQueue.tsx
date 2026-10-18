@@ -1,16 +1,16 @@
 import { useState, useSyncExternalStore } from 'react';
-import { browserImageAssetsManager, browserImageTotal, getBrowserImageAssets, subscribeBrowserImageAssets } from './browserImageAssets';
+import { BROWSER_IMAGE_GROUPS, browserImageAssetsManager, browserImageTotal, getBrowserImageAssets, imageModelAcceptsPreviousEngine, subscribeBrowserImageAssets } from './browserImageAssets';
 import { ensureWritableFolder } from './storage';
 import DownloadRing from './DownloadRing';
 
-const groups = ['engine', 'model'] as const;
-const labels = { engine: 'ONNX image engine', model: 'Stable Diffusion' };
+const groups = ['engine', ...BROWSER_IMAGE_GROUPS] as const;
+const labels = { engine: 'ONNX image engine', model: 'Stable Diffusion', 'tiny-q4': 'Tiny-SD Q4', 'tiny-fp16': 'Tiny-SD FP16', sdxs: 'SDXS DreamShaper', lcm: 'DreamShaper 8 LCM', 'supra-mobile': 'Supra2-IMG Mobile' };
 
 export default function BrowserImageDownloadQueue({ folder }: { folder: FileSystemDirectoryHandle | null }) {
   const state = useSyncExternalStore(subscribeBrowserImageAssets, getBrowserImageAssets);
   const [actionError, setActionError] = useState('');
   if (!folder || state.folder !== folder) return null;
-  const pending = groups.filter(group => !state.installed[group] && (state.active === group || state.queue.includes(group) || state.saved[group] > 0));
+  const pending = groups.filter(group => !state.installed[group] && (state.active === group || state.queue.includes(group) || state.saved[group] > 0 && !(group === 'engine' && state.legacyInstalled)));
   if (!pending.length) return null;
   const ordered = [...pending].sort((a, b) => {
     const rank = (group: typeof groups[number]) => state.active === group ? -1 : state.queue.includes(group) ? state.queue.indexOf(group) : groups.indexOf(group) + state.queue.length;
@@ -21,7 +21,7 @@ export default function BrowserImageDownloadQueue({ folder }: { folder: FileSyst
     setActionError('');
     try {
       if (!await ensureWritableFolder(folder)) throw new Error('Allow write access to resume image downloads.');
-      if (group === 'model' && !state.installed.engine) browserImageAssetsManager.queue(folder, 'engine');
+      if (group !== 'engine' && !state.installed.engine && !(state.legacyInstalled && imageModelAcceptsPreviousEngine(group))) browserImageAssetsManager.queue(folder, 'engine');
       browserImageAssetsManager.queue(folder, group);
       browserImageAssetsManager.resume(folder);
     } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }

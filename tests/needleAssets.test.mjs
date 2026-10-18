@@ -47,3 +47,18 @@ test('another Needle model can be queued while one is downloading', async () => 
   assert.deepEqual(getNeedleAssets().queue, ['needle3', 'needle']);
   assert.equal(getNeedleAssets().queuePaused, true);
 });
+
+test('Needle discovery exposes file checking before declaring models absent', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const folder = {
+    async getDirectoryHandle() { await gate; throw new DOMException('Missing', 'NotFoundError'); },
+  };
+  const discovery = needleAssetsManager.discover(folder);
+  assert.equal(getNeedleAssets().folder, folder);
+  assert.equal(getNeedleAssets().checked.engine, false);
+  release();
+  await discovery;
+  assert.deepEqual(getNeedleAssets().checked, { engine: true, needle: true, needle2: true, needle3: true });
+  assert.deepEqual(getNeedleAssets().installed, { engine: false, needle: false, needle2: false, needle3: false });
+});

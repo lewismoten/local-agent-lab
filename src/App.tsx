@@ -6,6 +6,7 @@ import { getImageSession, isImageReady, subscribeImageSession } from './imageSes
 import ImageGeneratorSettings from './ImageGeneratorSettings';
 import { setBrowserImageFolder } from './browserImage';
 import { browserImageAssetsManager } from './browserImageAssets';
+import { speechAssetsManager } from './speechAssets.ts';
 import { browserThinkingMode } from './browserThinking';
 import ChatPanel from './ChatPanel';
 import { useConfirmDialog } from './ConfirmDialog';
@@ -82,6 +83,7 @@ export default function App() {
     }
     catch { return IMAGE_PRESETS.none; }
   });
+  const imageSettingsDialog = useRef<HTMLDialogElement>(null);
   const [imageSettingsFolder, setImageSettingsFolder] = useState<FileSystemDirectoryHandle | null>(null);
   useEffect(() => { localStorage.setItem('image-generator', JSON.stringify({ ...imageSettings, apiKey: '' })); }, [imageSettings]);
   useEffect(() => {
@@ -184,6 +186,7 @@ export default function App() {
   }, []);
   useEffect(() => { if (folder) void modelDownloadManager.discover(folder); }, [folder]);
   useEffect(() => { setBrowserImageFolder(folder); if (folder) void browserImageAssetsManager.discover(folder).catch(error => showToast(error instanceof Error ? error.message : String(error), 'error')); }, [folder]);
+  useEffect(() => { if (folder) void speechAssetsManager.discover(folder).catch(error => showToast(error instanceof Error ? error.message : String(error), 'error')); }, [folder]);
   useEffect(() => {
     localStorage.setItem('ai-profiles', JSON.stringify(profiles.map(x => ({ ...x, apiKey: '' }))));
   }, [profiles]);
@@ -461,7 +464,7 @@ export default function App() {
     if (!folder) throw new Error('Connect a project folder before generating reference images.');
     if (!currentCharacter.appearance.trim()) throw new Error('Describe the character’s appearance first.');
     const prompt = `Create an original, single-character visual reference portrait. Full color, clear face and clothing details, neutral unobtrusive background, no text, no copyrighted character likeness. Character: ${currentCharacter.name}. Role: ${currentCharacter.role}. Exact appearance instructions: ${currentCharacter.appearance}. Project audience: ${project.audience}. Keep this person visually consistent with these instructions.`;
-    const blob = await generateImage(imageSettings, prompt);
+    const blob = await generateImage(imageSettings, prompt, undefined, undefined, undefined, folder);
     const path = `assets/characters/${currentCharacter.id}/${uid()}-generated.png`;
     await writeBlob(folder, path, blob);
     update(p => ({ ...p, characters: p.characters.map(c => c.id === currentCharacter.id ? { ...c, imagePaths: [...c.imagePaths, path], updatedAt: now() } : c) }));
@@ -546,7 +549,7 @@ export default function App() {
       </div>
     </aside>
     <main className="main">
-      <header className="topbar"><div className="breadcrumb">STORY STUDIO <ChevronRight size={14} /> {labels[view].toUpperCase()}</div><div className="top-actions"><DownloadIndicator onOpen={() => setView('ai-profiles')} onResume={() => void resumePendingDownload()}/><span className={dirty ? 'save-state unsaved' : 'save-state'}><i />{dirty ? 'Changes to sync' : connected ? 'Folder in sync' : 'Saved in browser'}</span>{connected && <button className="button secondary compact" onClick={() => act('sync', syncFolder)} disabled={!!busy}><RefreshCw size={15} /> Sync folder</button>}</div></header>
+      <header className="topbar"><div className="breadcrumb">STORY STUDIO <ChevronRight size={14} /> {labels[view].toUpperCase()}</div><div className="top-actions"><DownloadIndicator folder={folder} onOpen={() => setView('ai-profiles')} onResume={() => void resumePendingDownload()}/><span className={dirty ? 'save-state unsaved' : 'save-state'}><i />{dirty ? 'Changes to sync' : connected ? 'Folder in sync' : 'Saved in browser'}</span>{connected && <button className="button secondary compact" onClick={() => act('sync', syncFolder)} disabled={!!busy}><RefreshCw size={15} /> Sync folder</button>}</div></header>
       {view === 'chat' && <ChatPanel project={project} folder={folder} config={config} imageConfig={imageSettings} profiles={profiles} onSelectProfile={setSelectedProfileId} onSettings={() => setView('ai-profiles')} onOpenWorld={id => { setSelectedWorld(id); setView('world'); }} onUpload={uploadSources} onSaveWorldNote={saveWorldNote} onSaveReport={saveContinuityReport} onUpdateReport={updateContinuityReport} onRequestModelTest={reason => reason === 'image' ? setView('ai-profiles') : openDialog('ai')} onChatActivityChange={setChatActive} onSuggestionStatus={setSuggestionStatus} onAddSuggestions={suggestions => update(p => ({ ...p, storyGraph: { ...p.storyGraph, suggestions: [...p.storyGraph.suggestions, ...suggestions] } }))}/>}
       {view === 'overview' && <section className="page">
         <div className="page-heading"><div><div className="eyebrow">YOUR STORY UNIVERSE</div><h1>{project.title}</h1><p>A home for the people, places, and chapters that make up your world.</p></div><button className="button primary" onClick={() => setView('books')}><BookOpen size={17} /> Continue writing</button></div>
@@ -597,9 +600,9 @@ export default function App() {
         <div className="settings-card"><div className="two-col"><Field label="Project title" value={project.title} onChange={v => update(p => markAllBooks({ ...p, title: v }, ['outline', 'summary', 'draft']))}/><label className="field"><span>Format</span><select value={project.format} onChange={e => update(p => markAllBooks({ ...p, format: e.target.value as Format }, ['outline', 'summary', 'draft']))}>{formats.map(x => <option key={x}>{x}</option>)}</select></label></div><Field label="Series premise" value={project.premise} multiline rows={5} placeholder="What is the heart of this story or series?" onChange={v => update(p => markAllBooks({ ...p, premise: v }, ['outline', 'summary', 'draft']))}/><div className="two-col"><Field label="Audience / demographics" value={project.audience} placeholder="e.g. adults, ages 8–12" onChange={v => update(p => markAllBooks({ ...p, audience: v }, ['outline', 'summary', 'draft']))}/><Field label="Reading level" value={project.readingLevel} placeholder="e.g. Grade 4, YA, general" onChange={v => update(p => markAllBooks({ ...p, readingLevel: v }, ['outline', 'summary', 'draft']))}/></div><Field label="Genres (comma separated)" value={project.genres.join(', ')} onChange={v => update(p => markAllBooks({ ...p, genres: v.split(',').map(x => x.trim()).filter(Boolean) }, ['outline', 'summary', 'draft']))}/><Field label="Tone" value={project.tone} placeholder="Lyrical, warm, suspenseful…" onChange={v => update(p => markAllBooks({ ...p, tone: v }, ['outline', 'summary', 'draft']))}/><Field label="Themes" value={project.themes} multiline onChange={v => update(p => markAllBooks({ ...p, themes: v }, ['outline', 'summary', 'draft']))}/><Field label="Content boundaries" value={project.boundaries} multiline placeholder="Topics, imagery, or intensity to avoid…" onChange={v => update(p => markAllBooks({ ...p, boundaries: v }, ['outline', 'summary', 'draft']))}/></div>
       </section>}
       {view === 'ai-profiles' && <section className="page narrow">
-        <div className="page-heading"><div><div className="eyebrow">MODEL SETTINGS</div><h1>AI profiles</h1><p>Choose and test the models used for writing and tools.</p></div></div>
-        <ProviderSettings config={config} profiles={profiles} folder={folder} onSelect={setSelectedProfileId} onChange={setConfig} onAdd={profile => { setProfiles(previous => [...previous, profile]); setSelectedProfileId(profile.id); }} onDelete={id => { setProfiles(previous => previous.filter(x => x.id !== id)); setSelectedProfileId("browser"); }} onModelDownloaded={(id, path) => setProfiles(previous => previous.map(profile => profile.id === id && profile.provider === 'browser' ? { ...profile, model: path } : profile))} onConnectFolder={() => void act('connect', connectFolder)}/>
-        <ImageGeneratorSettings config={imageSettings} onChange={setImageSettings}/>
+        <div className="page-heading"><div><div className="eyebrow">MODEL SETTINGS</div><h1>AI profiles</h1><p>Choose and test the models used for writing and tools.</p></div><button className="button secondary compact" type="button" onClick={() => imageSettingsDialog.current?.showModal()}>Image services</button></div>
+        <ProviderSettings config={config} profiles={profiles} folder={folder} imageConfig={imageSettings} onImageConfigChange={setImageSettings} onSelect={setSelectedProfileId} onChange={setConfig} onAdd={profile => { setProfiles(previous => [...previous, profile]); setSelectedProfileId(profile.id); }} onDelete={id => { setProfiles(previous => previous.filter(x => x.id !== id)); setSelectedProfileId("browser"); }} onModelDownloaded={(id, path) => setProfiles(previous => previous.map(profile => profile.id === id && profile.provider === 'browser' ? { ...profile, model: path } : profile))} onConnectFolder={() => void act('connect', connectFolder)}/>
+        <dialog ref={imageSettingsDialog} className="model-limit-dialog image-settings-dialog" aria-label="Image services"><div className="provider-heading"><button className="button secondary compact" type="button" onClick={() => imageSettingsDialog.current?.close()}>Close</button></div><ImageGeneratorSettings config={imageSettings} onChange={setImageSettings} folder={folder}/></dialog>
       </section>}
       {view === 'project-files' && <section className="page narrow">
         <div className="page-heading"><div><div className="eyebrow">LOCAL WORKSPACE</div><h1>Project files</h1><p>Connect, sync, import, and export your project files.</p></div></div>
