@@ -18,7 +18,7 @@ export default function HarnessResponseDiagnostics({ report, loading, error, mes
     {loading && <p role="status">Opening saved diagnostics…</p>}
     {error && <p role="alert" className="harness-response-report-error">{error}</p>}
     {report && <>
-      <div className="harness-response-report-stats"><span>Input <strong>{report.usage.inputTokens?.toLocaleString() ?? '—'}</strong></span><span>Output <strong>{report.usage.outputTokens?.toLocaleString() ?? '—'}</strong></span><span>Elapsed <strong>{(report.usage.elapsedMs / 1000).toFixed(1)}s</strong></span><span>Speed <strong>{report.usage.observedTokensPerSecond === null ? '—' : `${report.usage.observedTokensPerSecond} tok/s`}</strong></span><span>Seed <strong>{report.sampling.seed ?? 'Runtime default'}</strong></span><span>Temperature <strong>{report.sampling.temperature ?? 'Runtime default'}</strong></span></div>
+      <div className="harness-response-report-stats"><span>Input <strong>{report.usage.inputTokens?.toLocaleString() ?? '—'}</strong></span>{report.usage.cachedInputTokens != null && <span title="Prompt tokens reused from the loaded model’s cache">Cached <strong>{report.usage.cachedInputTokens.toLocaleString()}</strong></span>}<span>Output <strong>{report.usage.outputTokens?.toLocaleString() ?? '—'}</strong></span><span>Elapsed <strong>{(report.usage.elapsedMs / 1000).toFixed(1)}s</strong></span><span>Speed <strong>{report.usage.observedTokensPerSecond === null ? '—' : `${report.usage.observedTokensPerSecond} tok/s`}</strong></span><span>Seed <strong>{report.sampling.seed ?? 'Runtime default'}</strong></span><span>Temperature <strong>{report.sampling.temperature ?? 'Runtime default'}</strong></span></div>
       <p className="harness-muted">{report.sampling.note}</p>
       <section><h3>Model</h3><pre>{modelStampDetails(report.model)}</pre></section>
       <section><h3>System instructions</h3><pre>{report.input.system}</pre></section>
@@ -30,7 +30,7 @@ export default function HarnessResponseDiagnostics({ report, loading, error, mes
         {!!round.response.text && <><strong>Output</strong><div className="harness-response-report-markdown"><ReactMarkdown>{round.response.text}</ReactMarkdown></div></>}
         {!!round.response.toolCalls?.length && <><strong>Tool calls</strong><pre>{JSON.stringify(round.response.toolCalls, null, 2)}</pre></>}
         {!!round.toolResults?.length && <><strong>Tool results</strong><pre>{round.toolResults.map(item => `${item.name}: ${item.content}`).join('\n\n')}</pre></>}
-        <small>Input {round.response.inputTokens?.toLocaleString() ?? '—'} · Output {round.response.outputTokens?.toLocaleString() ?? '—'} tokens</small>
+        <small>Input {round.response.inputTokens?.toLocaleString() ?? '—'}{round.response.cachedInputTokens != null ? ` · Cached ${round.response.cachedInputTokens.toLocaleString()}` : ''} · Output {round.response.outputTokens?.toLocaleString() ?? '—'} tokens</small>
       </article>)}</section>}
       <section><h3>Thinking</h3>{report.output.thinking ? <div className="harness-response-report-markdown"><ReactMarkdown>{report.output.thinking}</ReactMarkdown></div> : <p className="harness-muted">No thinking text was returned by this model or provider.</p>}</section>
       <section><h3>Answer</h3><div className="harness-response-report-markdown"><ReactMarkdown>{report.output.text}</ReactMarkdown></div></section>

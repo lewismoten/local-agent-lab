@@ -22,9 +22,18 @@ export function identityDraft(index: number, existingNames: string[] = [], now =
   return { ...persona, name, id: newId(), createdAt: now, updatedAt: now };
 }
 
-export function identityAvatarPrompt(identity: Pick<HarnessIdentity, 'name' | 'focus'>): string {
+export function identityAvatarPrompt(identity: Pick<HarnessIdentity, 'name' | 'focus' | 'icon'>): string {
   const focus = identity.focus === 'coding' ? 'software builder' : identity.focus === 'research' ? 'research guide' : identity.focus === 'review' ? 'careful reviewer' : 'creative assistant';
-  return `Original square portrait avatar for a fictional ${focus} named ${identity.name}. Friendly, distinctive face or character, clear silhouette, dark teal and violet background, subtle luminous accents, clean illustration, centered head and shoulders, no words, no logos.`;
+  const motif = {
+    person: 'a friendly fictional person, centered head and shoulders',
+    robot: 'an expressive robot head with distinctive features',
+    code: 'an abstract code-bracket emblem with subtle circuit traces',
+    brain: 'a stylized luminous brain emblem',
+    compass: 'a crisp compass rose emblem',
+    shield: 'a protective shield emblem',
+    spark: 'a radiant spark or small constellation emblem',
+  }[identity.icon || 'person'];
+  return `Original square avatar illustration for a fictional ${focus}${identity.name.trim() ? ` named ${identity.name.trim()}` : ''}. Show ${motif}. Clear silhouette, dark teal and violet background, subtle luminous accents, clean illustration, no words, no logos.`;
 }
 
 /** Normalize uploads and generated images to a compact, portable PNG. */

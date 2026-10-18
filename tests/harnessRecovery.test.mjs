@@ -117,6 +117,88 @@ test('response diagnostics stay beside their message when a conversation is copi
   assert.ok((await store.messages(copied)).every(item => item.hasDiagnostics));
 });
 
+test('completed portable history packs survive reopen, search, and copying', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('packed-history', folder);
+  const source = createConversation('home');
+  const total = MESSAGE_CHUNK_SIZE * 16;
+  for (let number = 0; number < 16; number++) {
+    const chunk = Array.from({ length: MESSAGE_CHUNK_SIZE }, (_, offset) => {
+      const seq = number * MESSAGE_CHUNK_SIZE + offset;
+      return { ...message(seq), seq, content: seq === 12 ? 'old unique fact' : `Message ${seq}` };
+    });
+    await writeBlob(folder, `harness/projects/home/sessions/${source.id}/chunks/${String(number).padStart(6, '0')}.json`, new Blob([JSON.stringify(chunk)]));
+  }
+  const meta = { ...source, messageCount: total };
+  const packed = await store.packCompletedChunks(meta);
+  assert.deepEqual(packed, { groups: 1, removed: 16 });
+  await assert.rejects(readBlob(folder, `harness/projects/home/sessions/${source.id}/chunks/000000.json`), { name: 'NotFoundError' });
+  assert.ok((await readBlob(folder, `harness/projects/home/sessions/${source.id}/packs/000000.json`)).size > 0);
+  const reopened = new HarnessStore('packed-history', folder);
+  assert.equal((await reopened.messages(meta, 0, 1))[0].content, 'Message 0');
+  assert.equal((await reopened.searchMessages(meta, 'old unique fact'))[0].seq, 12);
+  await assert.rejects(reopened.copyConversation(meta, 'stopped', done => { if (done === 1) throw new Error('Stop packed copy'); }), /Stop packed copy/);
+  const stoppedSessions = await folder.getDirectoryHandle('harness').then(d => d.getDirectoryHandle('projects')).then(d => d.getDirectoryHandle('stopped')).then(d => d.getDirectoryHandle('sessions'));
+  assert.equal(stoppedSessions.children.size, 0);
+  const copied = await reopened.copyConversation(meta, 'copy');
+  assert.equal((await reopened.messages(copied, total - 1, total))[0].seq, total - 1);
+  assert.ok((await readBlob(folder, `harness/projects/copy/sessions/${copied.id}/packs/000000.json`)).size > 0);
+});
+
+test('an interrupted pack cleanup keeps messages readable and can be retried', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('pack-recovery', folder);
+  const source = createConversation('home');
+  const total = MESSAGE_CHUNK_SIZE * 16;
+  for (let number = 0; number < 16; number++) {
+    const chunk = Array.from({ length: MESSAGE_CHUNK_SIZE }, (_, offset) => {
+      const seq = number * MESSAGE_CHUNK_SIZE + offset;
+      return { ...message(seq), seq };
+    });
+    await writeBlob(folder, `harness/projects/home/sessions/${source.id}/chunks/${String(number).padStart(6, '0')}.json`, new Blob([JSON.stringify(chunk)]));
+  }
+  const chunksDirectory = await folder.getDirectoryHandle('harness').then(d => d.getDirectoryHandle('projects')).then(d => d.getDirectoryHandle('home')).then(d => d.getDirectoryHandle('sessions')).then(d => d.getDirectoryHandle(source.id)).then(d => d.getDirectoryHandle('chunks'));
+  const remove = chunksDirectory.removeEntry.bind(chunksDirectory);
+  chunksDirectory.removeEntry = async name => { if (name === '000001.json') throw new DOMException('USB removal interrupted cleanup', 'NotAllowedError'); return remove(name); };
+  const meta = { ...source, messageCount: total };
+  await assert.rejects(store.packCompletedChunks(meta), /USB removal interrupted cleanup/);
+  const reopened = new HarnessStore('pack-recovery', folder);
+  assert.equal((await reopened.messages(meta)).length, total);
+  chunksDirectory.removeEntry = remove;
+  const remainingPath = `harness/projects/home/sessions/${source.id}/chunks/000001.json`;
+  const original = await (await readBlob(folder, remainingPath)).text();
+  const altered = JSON.parse(original);
+  altered[0].content = 'Changed after packing';
+  await writeBlob(folder, remainingPath, new Blob([JSON.stringify(altered)]));
+  await assert.rejects(reopened.packCompletedChunks(meta), /differs from its pack/);
+  await writeBlob(folder, remainingPath, new Blob([original]));
+  assert.deepEqual(await reopened.packCompletedChunks(meta), { groups: 1, removed: 15 });
+  assert.equal((await new HarnessStore('pack-recovery', folder).messages(meta)).length, total);
+});
+
+test('a completed message group packs automatically after the session index is saved', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('automatic-pack', folder);
+  const source = createConversation('home');
+  const finalSeq = MESSAGE_CHUNK_SIZE * 16 - 1;
+  for (let number = 0; number < 16; number++) {
+    const chunk = Array.from({ length: number === 15 ? MESSAGE_CHUNK_SIZE - 1 : MESSAGE_CHUNK_SIZE }, (_, offset) => {
+      const seq = number * MESSAGE_CHUNK_SIZE + offset;
+      return { ...message(seq), seq };
+    });
+    await writeBlob(folder, `harness/projects/home/sessions/${source.id}/chunks/${String(number).padStart(6, '0')}.json`, new Blob([JSON.stringify(chunk)]));
+  }
+  const before = { ...source, messageCount: finalSeq };
+  await store.updateSessions('home', () => [before]);
+  const result = await store.appendConversationMessage(before, message(finalSeq));
+  assert.equal(result.meta.messageCount, finalSeq + 1);
+  assert.ok((await readBlob(folder, `harness/projects/home/sessions/${source.id}/packs/000000.json`)).size > 0);
+  const reopened = new HarnessStore('automatic-pack', folder);
+  assert.equal((await reopened.messages(result.meta, finalSeq, finalSeq + 1))[0].seq, finalSeq);
+  const next = await reopened.appendMessage(result.meta, message(finalSeq + 1));
+  assert.equal((await reopened.messages(next, finalSeq, finalSeq + 2)).length, 2);
+});
+
 test('recovers a trailing message after crossing a chunk boundary', async () => {
   const store = new HarnessStore('boundary-test', new MemoryDirectory());
   let saved = createConversation('home');
@@ -368,7 +450,7 @@ test('a move keeps a source that gained a message during the copy', async () => 
   await store.updateSessions('second-project', () => [copied]);
   const newer = await store.appendMessage(source, message(1));
   await store.updateSessions('home', () => [newer]);
-  await assert.rejects(store.removeMovedSource(source), /source was kept/);
+  await assert.rejects(store.removeMovedSource(source, copied), /source was kept/);
   assert.equal((await store.sessions('home'))[0].messageCount, 2);
   assert.equal((await store.sessions('second-project'))[0].messageCount, 1);
   assert.deepEqual((await store.messages(newer)).map(item => item.content), ['Message 0', 'Message 1']);
@@ -379,20 +461,54 @@ test('a move detects a chunk written before the source metadata caught up', asyn
   const source = await store.appendMessage(createConversation('home'), message(0));
   await store.updateSessions('home', () => [source]);
   await store.appendMessage(source, message(1));
-  await assert.rejects(store.removeMovedSource(source), /source was kept/);
+  await assert.rejects(store.removeMovedSource(source, source), /source was kept/);
   assert.equal((await store.sessions('home'))[0].messageCount, 1);
   assert.equal((await store.recoverConversation(source)).messageCount, 2);
 });
 
 test('a move removes an unchanged source after copying', async () => {
-  const store = new HarnessStore('move-success-test', new MemoryDirectory());
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('move-success-test', folder);
+  const source = await store.appendMessage(createConversation('home'), message(0));
+  const artwork = await store.saveAvatarAsset(new Blob(['icon'], { type: 'image/png' }), { title: 'Conversation icon', tags: ['Conversation'], source: 'uploaded' });
+  await store.saveSurfaceArtwork(`conversation:${source.id}`, artwork.id, 'A small icon');
+  await store.updateSessions('home', () => [source]);
+  const copied = await store.copyConversation(source, 'second-project');
+  await store.updateSessions('second-project', () => [copied]);
+  assert.equal(await store.removeMovedSource(source, copied), null);
+  assert.deepEqual(await store.sessions('home'), []);
+  assert.deepEqual((await store.messages(copied)).map(item => item.content), ['Message 0']);
+  await assert.rejects(readBlob(folder, `harness/projects/home/sessions/${source.id}/chunks/000000.json`), /Missing/);
+  const icons = (await store.surfaceArtwork()).items;
+  assert.equal(icons[`conversation:${source.id}`], undefined);
+  assert.equal(icons[`conversation:${copied.id}`].assetId, artwork.id);
+  assert.ok(await store.avatarAsset(artwork.id));
+});
+
+test('a move preserves its destination when old source file cleanup fails', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('move-cleanup-failure', folder);
   const source = await store.appendMessage(createConversation('home'), message(0));
   await store.updateSessions('home', () => [source]);
   const copied = await store.copyConversation(source, 'second-project');
   await store.updateSessions('second-project', () => [copied]);
-  await store.removeMovedSource(source);
+  const sessions = await folder.getDirectoryHandle('harness').then(dir => dir.getDirectoryHandle('projects')).then(dir => dir.getDirectoryHandle('home')).then(dir => dir.getDirectoryHandle('sessions'));
+  sessions.removeEntry = async () => { throw new DOMException('Drive became read-only', 'NoModificationAllowedError'); };
+  assert.match(await store.removeMovedSource(source, copied), /Drive became read-only/);
   assert.deepEqual(await store.sessions('home'), []);
   assert.deepEqual((await store.messages(copied)).map(item => item.content), ['Message 0']);
+});
+
+test('a move keeps the source if another tab removes the destination before confirmation', async () => {
+  const store = new HarnessStore('move-destination-conflict', new MemoryDirectory());
+  const source = await store.appendMessage(createConversation('home'), message(0));
+  await store.updateSessions('home', () => [source]);
+  const copied = await store.copyConversation(source, 'second-project');
+  await store.updateSessions('second-project', () => [copied]);
+  await store.updateSessions('second-project', () => []);
+  await assert.rejects(store.removeMovedSource(source, copied), /destination conversation changed.*source was kept/i);
+  assert.deepEqual((await store.messages(source)).map(item => item.content), ['Message 0']);
+  assert.equal((await store.sessions('home'))[0].id, source.id);
 });
 
 test('two tabs cannot overwrite the same conversation message', async () => {

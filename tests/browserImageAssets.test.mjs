@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { transferBrowserImageAsset } from '../src/browserImageAssets.ts';
+import { BROWSER_IMAGE_MODEL_ASSETS, transferBrowserImageAsset } from '../src/browserImageAssets.ts';
 import { modelDownloadManager } from '../src/modelDownloadSession.ts';
+
+test('SD 1.5 saves the text encoder provenance and license notice before its weights', () => {
+  const notice = BROWSER_IMAGE_MODEL_ASSETS.findIndex(asset => asset.name === 'Text_Encoder_LICENSE.txt');
+  const weights = BROWSER_IMAGE_MODEL_ASSETS.findIndex(asset => asset.name === 'text-encoder.onnx');
+  assert.ok(notice >= 0 && notice < weights);
+  assert.match(BROWSER_IMAGE_MODEL_ASSETS[notice].url, /microsoft\/stable-diffusion-v1\.5-webnn/);
+});
 
 function memoryDirectory() {
   const files = new Map();

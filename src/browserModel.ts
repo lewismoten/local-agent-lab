@@ -37,6 +37,27 @@ const listeners = new Set<() => void>();
 const publish = (next: BrowserModelStatus) => { status = next; listeners.forEach(listener => listener()); };
 export const getBrowserModelStatus = () => status;
 export const isBrowserVisionReady = (path: string) => visionProjectorLoaded && (!!engine || hasPrismBrowserVision()) && status.state === 'ready' && status.path === path;
+/** Analyze one user-selected image with an already loaded, licensed vision model. */
+export function describeBrowserImage(path: string, image: Blob, prompt: string, signal?: AbortSignal): Promise<string> {
+  return withLocalModelMemory(async () => {
+    if (!isBrowserVisionReady(path) || !engineFolder) throw new Error('Load this model with its vision projector first.');
+    if (signal?.aborted) throw new DOMException('Image analysis stopped.', 'AbortError');
+    await assertModelLicenseFiles(engineFolder, path);
+    const catalog = catalogModelForPath(path);
+    if (catalog?.id === 'gemma3-1b' && !hasGemmaConsent()) throw new Error('Review and accept the Gemma Terms before using this model.');
+    if (catalog?.id === 'qwen25-3b' && !hasQwenResearchConsent()) throw new Error('Acknowledge the Qwen Research License before using this model.');
+    if (catalog?.visionProjector) await assertVisionProjectorLicenseFiles(engineFolder, catalog);
+    const maxTokens = 256;
+    const response = hasPrismBrowserVision()
+      ? await prismVisionCompletion(image, prompt, maxTokens, signal)
+      : await createBrowserChatCompletion({ messages: [{ role: 'user', content: [{ type: 'image', data: await image.arrayBuffer() }, { type: 'text', text: prompt }] }], max_tokens: maxTokens, abortSignal: signal });
+    if (signal?.aborted) throw new DOMException('Image analysis stopped.', 'AbortError');
+    if (response.choices[0]?.finish_reason === 'length') throw new Error('The vision model reached its output limit before completing the tag list.');
+    const answer = visibleBrowserText(response.choices[0]?.message.content);
+    if (!answer) throw new Error('The vision model returned no visible tags.');
+    return answer;
+  });
+}
 export type VisionProbeResult = { id: string; title: string; prompt: string; expected: string; answer: string; status: 'passed' | 'failed' | 'inconclusive'; detail: string; outputTokens?: number; sizeResults?: { sizePx: number; words: string[]; matched: string[] }[]; keywordResults?: PhotoKeywordResult[]; cropCorners?: CropCorners };
 export function probeBrowserVision(path: string, fixtures: VisionFixture[], maxTokens: number, onResult: (result: VisionProbeResult, index: number) => void, signal?: AbortSignal) {
   return withLocalModelMemory(() => probeBrowserVisionInternal(path, fixtures, maxTokens, onResult, signal));
@@ -487,7 +508,8 @@ async function browserCompleteInternal(config: AIConfig, turns: ChatTurn[], syst
     const traceRound: InferenceRound = { request: requestSnapshot, response: {
       text: visibleBrowserText(choice.message.content), thinking: (reasoning || inlineReasoning).trim(),
       toolCalls: snapshotInference(choice.message.tool_calls || []), finishReason: choice.finish_reason || undefined,
-      inputTokens: response.usage?.prompt_tokens, outputTokens: response.usage?.completion_tokens,
+      inputTokens: response.usage?.prompt_tokens, cachedInputTokens: response.usage?.prompt_tokens_details?.cached_tokens,
+      outputTokens: response.usage?.completion_tokens,
     } };
     rounds.push(traceRound);
     if (response.thinkingSpillover) throw new Error('The model continued its reasoning in the visible answer after reaching the thinking cap. Try Light or None, or another model.');

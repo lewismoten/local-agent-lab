@@ -1,0 +1,18 @@
+.harness-user-profile-dialog { width: min(580px, calc(100vw - 26px)); max-height: min(88dvh, 800px); overflow: auto; }
+.harness-user-profile-preview { display: flex; align-items: center; gap: 14px; margin: 14px 0 9px; }
+.harness-user-profile-preview label { flex: 1; min-width: 0; margin: 0; }
+.harness-user-profile-avatar { display: grid; flex: none; place-items: center; width: 58px; height: 58px; overflow: hidden; border: 1px solid #80ede1; border-radius: 13px 5px 13px 5px; color: #b9fff3; background: linear-gradient(145deg, #21495a, #222543); box-shadow: 0 0 18px #64e9dc40; }
+.harness-user-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.harness-user-profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.harness-user-profile-actions span { color: var(--h-muted); font-size: 11px; }
+.harness-user-profile-gallery { margin: 13px 0; padding: 10px; border: 1px solid #45697e; border-radius: 8px; background: #101f32; }
+.harness-user-profile-gallery summary { color: var(--h-cyan); cursor: pointer; font-size: 12px; font-weight: 700; }
+.harness-user-profile-gallery > input { width: 100%; margin: 9px 0; }
+.harness-user-profile-gallery .harness-avatar-gallery-grid { max-height: 225px; margin-top: 10px; }
+.harness-user-profile-prompt { display: grid; gap: 6px; margin-top: 13px; }
+.harness-user-profile-prompt textarea { width: 100%; resize: vertical; }
+.harness-user-profile-button { display: inline-grid; flex: none; place-items: center; width: 31px; height: 31px; overflow: hidden; border: 1px solid #5baab0; border-radius: 9px; color: #a5fff3; background: #18364b; }
+.harness-user-profile-button img { width: 100%; height: 100%; object-fit: cover; }
+.harness-user-profile-button:hover { border-color: #a5fff3; box-shadow: 0 0 16px #76f5e548; }
+.harness-message.user .harness-user-chat-avatar { display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+.harness-message.user .harness-user-chat-avatar img { width: 100%; height: 100%; object-fit: cover; }

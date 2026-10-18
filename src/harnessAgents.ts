@@ -114,12 +114,15 @@ export async function executeHarnessAgent(args: {
     const existingSession = sessions.find(item => item.agentId === agent.id);
     let session = existingSession || { ...createConversation(project.id, agent.id), title: `${agent.name} · run log`, autoTitled: true };
     const saveSession = async () => {
+      let inserted = false;
       const updated = await store.updateSessions(project.id, current => {
         const existing = current.find(item => item.id === session.id);
+        inserted = !existing;
         const record = existing ? { ...session, title: existing.title, pinned: existing.pinned, autoTitled: existing.autoTitled } : session;
         return [record, ...current.filter(item => item.id !== session.id)];
       });
       session = updated.find(item => item.id === session.id) || session;
+      if (inserted) void store.recordAchievementMetrics({ conversations: 1 }).catch(error => console.warn('Agent log saved; achievement progress will update when Achievements opens:', error));
     };
     const append = async (message: Omit<HarnessMessage, 'seq'>) => {
       const saved = await store.appendConversationMessage(session, message);

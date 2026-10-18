@@ -156,6 +156,7 @@
 .harness-response-report-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .harness-response-report-stats span { padding: 8px 10px; border: 1px solid #52788c; border-radius: 6px; color: var(--h-muted); background: #12273a; font-size: 11px; }
 .harness-response-report-stats strong { display: block; color: var(--h-text); font: 700 13px ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
+.harness-response-report-stats + .harness-muted { margin: 10px 0 3px; }
 .harness-response-report section { margin: 13px 0; padding: 12px; border: 1px solid #45677e; border-radius: 8px; background: #0c1b2e; }
 .harness-response-report section h3 { margin: 0 0 8px; color: #9ff5e7; font-size: 13px; }
 .harness-response-report pre { max-height: 260px; margin: 0; padding: 10px; overflow: auto; border: 1px solid #304c64; border-radius: 5px; color: #dcecf6; background: #071422; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.55 ui-monospace, SFMono-Regular, monospace; }

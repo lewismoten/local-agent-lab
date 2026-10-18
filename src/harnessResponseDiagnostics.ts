@@ -8,7 +8,7 @@ export type ResponseDiagnostic = {
   input: { system: string; turns: ChatTurn[]; note: string };
   output: { text: string; thinking: string | null; toolEvents: string[] };
   rounds?: InferenceRound[];
-  usage: { inputTokens: number | null; outputTokens: number | null; elapsedMs: number; observedTokensPerSecond: number | null };
+  usage: { inputTokens: number | null; cachedInputTokens?: number | null; outputTokens: number | null; elapsedMs: number; observedTokensPerSecond: number | null };
   sampling: { seed: number | null; temperature: number | null; note: string };
 };
 
@@ -26,6 +26,9 @@ export function responseDiagnostic(_config: AIConfig, stamp: ModelStamp, prompt:
     const values = completion.rounds?.map(round => round.request[key]);
     return values && values.length > 1 && values.some(value => value !== values[0]);
   });
+  const cachedRounds = completion.rounds?.map(round => round.response.cachedInputTokens);
+  const cachedInputTokens = cachedRounds?.length && cachedRounds.every(value => typeof value === 'number' && Number.isFinite(value))
+    ? cachedRounds.reduce<number>((total, value) => total + (value || 0), 0) : null;
   return {
     version: 2,
     createdAt: new Date().toISOString(),
@@ -35,6 +38,7 @@ export function responseDiagnostic(_config: AIConfig, stamp: ModelStamp, prompt:
     rounds: completion.rounds || [],
     usage: {
       inputTokens: completion.inputTokens ?? null,
+      cachedInputTokens,
       outputTokens: completion.outputTokens ?? null,
       elapsedMs: Math.max(0, Math.round(elapsedMs)),
       observedTokensPerSecond: observedTokensPerSecond && Number.isFinite(observedTokensPerSecond) ? Math.round(observedTokensPerSecond * 10) / 10 : null,

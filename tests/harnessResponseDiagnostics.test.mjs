@@ -36,3 +36,19 @@ test('response diagnostic refers to per-round requests when sampling changes', (
   assert.equal(report.sampling.temperature, null);
   assert.match(report.sampling.note, /varied between model rounds/i);
 });
+
+test('response diagnostic totals known prompt cache reuse across model rounds', () => {
+  const config = { provider: 'browser', apiKey: '', endpoint: '', model: 'local.gguf', maxOutputTokens: 512 };
+  const stamp = { profileId: 'test', provider: 'browser', model: 'local.gguf', thinking: 'none', contextWindow: 4096, maxOutputTokens: 512 };
+  const prompt = { system: 'Help.', turns: [{ role: 'user', content: 'Hello' }] };
+  const report = responseDiagnostic(config, stamp, prompt, { text: 'Hi', rounds: [
+    { request: {}, response: { text: '', cachedInputTokens: 100 } },
+    { request: {}, response: { text: 'Hi', cachedInputTokens: 250 } },
+  ] }, 100);
+  assert.equal(report.usage.cachedInputTokens, 350);
+  const partial = responseDiagnostic(config, stamp, prompt, { text: 'Hi', rounds: [
+    { request: {}, response: { text: '', cachedInputTokens: 100 } },
+    { request: {}, response: { text: 'Hi' } },
+  ] }, 100);
+  assert.equal(partial.usage.cachedInputTokens, null);
+});

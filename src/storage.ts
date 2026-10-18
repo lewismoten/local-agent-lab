@@ -137,6 +137,19 @@ export async function writeBlob(root: FileSystemDirectoryHandle, path: string, b
     }
   }
 }
+export async function removeBlob(root: FileSystemDirectoryHandle, path: string): Promise<void> {
+  const parts = path.split('/');
+  const name = parts.pop()!;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await (await directoryAt(root, parts, false)).removeEntry(name);
+      return;
+    } catch (error) {
+      if (attempt || !missingEntry(error)) throw error;
+      directoryHandles.delete(root);
+    }
+  }
+}
 export async function writeProject(root: FileSystemDirectoryHandle, project: Project) {
   const files = projectFiles(project);
   const old = await readTree(root);

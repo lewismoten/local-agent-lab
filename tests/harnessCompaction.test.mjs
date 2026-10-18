@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from '../src/harnessCompaction.ts';
+import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, summaryHasSourceDetail, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from '../src/harnessCompaction.ts';
 
 test('model compaction does not turn pending work into completed work', () => {
   const source = 'USER: Please add Unicode escape tests. ASSISTANT: We fixed escaped quote handling; Unicode escape tests remain a TODO.';
@@ -17,6 +17,17 @@ test('a new segment rejects a repeated old summary without rejecting a changed t
   assert.equal(repeatsPreviousSummary('Project Meridian creation with private documents on removable drive, no service uploads', 'Project Meridian creation with private documents on removable drive, no service uploads.'), true);
   assert.equal(repeatsPreviousSummary('The parser now handles escaped quotes but Unicode tests remain pending.', 'Project Meridian creation with private documents on removable drive, no service uploads.'), false);
   assert.equal(repeatsPreviousSummary('USB privacy', 'USB privacy'), false);
+});
+
+test('multi-topic compaction rejects a generic status while retaining a topic-specific summary', () => {
+  const topics = ['parser', 'storage', 'journal', 'scheduler', 'catalog', 'diagnostics', 'voices', 'search', 'branches', 'offline'];
+  const messages = topics.flatMap((topic, index) => [
+    { id: `u-${index}`, seq: index * 2, role: 'user', createdAt: '2026-01-01T00:00:00Z', content: `Review ${topic} case ${index}. Ask before a destructive change.` },
+    { id: `a-${index}`, seq: index * 2 + 1, role: 'assistant', createdAt: '2026-01-01T00:00:00Z', content: `${topic} still needs a real-world check. No destructive change or Git commit was made.` },
+  ]);
+  assert.equal(summaryHasSourceDetail('No destructive changes or Git commits were made.', messages), false);
+  assert.equal(summaryHasSourceDetail('Parser and journal still need real-world checks.', messages), true);
+  assert.equal(summaryHasSourceDetail('Parser remains under review.', messages.slice(0, 2)), true);
 });
 
 test('metadata parsing accepts a fenced JSON object but rejects empty summaries', () => {

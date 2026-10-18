@@ -1,8 +1,12 @@
 import { complete, type AIConfig } from './ai';
-import { getBrowserModelStatus, isBrowserModelLoadedFrom, loadBrowserModel, quickBrowserModelCheck } from './browserModel';
+import { getBrowserModelStatus, isBrowserModelLoadedFrom, loadBrowserModel, quickBrowserModelCheck, unloadBrowserModel } from './browserModel';
 import { browserThinkingBudget } from './browserThinking';
 import { browserContextWindow } from './browserContext';
 import { profileConfirmationKey } from './harnessProfileEligibility';
+import { assertModelLicenseFiles } from './modelLicenses';
+import { isBonsai2BrowserUnsupported } from './modelCompatibility';
+import { assertPrismEngineFiles } from './prismEngine';
+import { assertWllamaEngineFiles } from './wllamaEngine';
 export type ModelSession = { state: 'untested' | 'testing' | 'ready' | 'failed'; fingerprint: string; message: string };
 let status: ModelSession = { state: 'untested', fingerprint: '', message: 'Test this model before using AI features.' };
 let testSequence = 0;
@@ -28,10 +32,20 @@ export const isModelReady = (config: AIConfig) => {
 /** Call while holding the shared model lease. A prior check in this tab remains valid after a temporary unload. */
 export async function ensureBrowserModelReady(config: AIConfig, folder: FileSystemDirectoryHandle): Promise<void> {
   if (config.provider !== 'browser' || !config.model.trim()) throw new Error('Choose a browser model first.');
-  if (!isBrowserModelLoadedFrom(folder, config.model, config.contextWindow, browserThinkingBudget(config))) {
-    await loadBrowserModel(folder, config.model, config.contextWindow, browserThinkingBudget(config));
+  try {
+    await assertModelLicenseFiles(folder, config.model);
+    if (isBonsai2BrowserUnsupported(config.model)) await assertPrismEngineFiles(folder);
+    else await assertWllamaEngineFiles(folder);
+    if (!isBrowserModelLoadedFrom(folder, config.model, config.contextWindow, browserThinkingBudget(config))) {
+      await loadBrowserModel(folder, config.model, config.contextWindow, browserThinkingBudget(config));
+    }
+    if (!isModelReady(config)) await testModel(config);
+  } catch (error) {
+    readyFingerprints.delete(modelFingerprint(config));
+    publish({ state: 'failed', fingerprint: modelFingerprint(config), message: error instanceof Error ? error.message : String(error) });
+    await unloadBrowserModel().catch(() => {});
+    throw error;
   }
-  if (!isModelReady(config)) await testModel(config);
 }
 export async function testModel(config: AIConfig) {
   const sequence = ++testSequence;

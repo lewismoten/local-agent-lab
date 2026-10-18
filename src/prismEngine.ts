@@ -222,7 +222,7 @@ export const prismEngineManager = {
 export async function assertPrismEngineFiles(folder: FileSystemDirectoryHandle): Promise<File> {
   const files = await engineAssetFiles(folder, 'PrismML', PRISM_ASSETS, validFile);
   const source = files[5];
-  if (!source || !files[0] || !files[1]) throw new Error('Download the PrismML source and its license files in Engines first.');
+  if (!source || files.some(file => !file)) throw new Error('Download the complete PrismML engine and its license files in Engines first.');
   return source;
 }
 export async function loadPrismModule(folder: FileSystemDirectoryHandle, onProgress: (message: string) => void = () => {}): Promise<{ Bonsai: { load: (options: Record<string, unknown>) => Promise<unknown> } }> {

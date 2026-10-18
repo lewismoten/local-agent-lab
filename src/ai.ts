@@ -21,7 +21,7 @@ export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 export type DeferredToolCall = { name: string; arguments: Record<string, unknown> };
 export type InferenceRound = {
   request: Record<string, unknown>;
-  response: { text: string; thinking?: string; toolCalls?: unknown[]; finishReason?: string; inputTokens?: number; outputTokens?: number };
+  response: { text: string; thinking?: string; toolCalls?: unknown[]; finishReason?: string; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number };
   toolResults?: { name: string; content: string }[];
 };
 export type Completion = { text: string; inputTokens?: number; outputTokens?: number; thinkingText?: string; toolEvents?: string[]; deferredToolCalls?: DeferredToolCall[]; rounds?: InferenceRound[] };

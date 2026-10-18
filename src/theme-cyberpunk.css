@@ -1,0 +1,367 @@
+/* Final visual layer. Decoration stays behind content and respects reduced motion. */
+:root {
+  color-scheme: dark;
+  background: #060913;
+  --night: #060913;
+  --canvas: #0a1020;
+  --panel: #111c30;
+  --panel-raised: #192940;
+  --line: #36536b;
+  --ink: #f0f7ff;
+  --muted: #b7cadb;
+  --cyan: #80f5e7;
+  --violet: #c6acff;
+  --amber: #ffcd92;
+}
+
+body { background: #060913; }
+::selection { color: #07131d; background: #91ffee; }
+
+.harness {
+  --h-bg: #060913;
+  --h-panel: #111c30;
+  --h-panel-2: #192940;
+  --h-line: #486981;
+  --h-text: #f0f7ff;
+  --h-muted: #b7cadb;
+  --h-cyan: #80f5e7;
+  --h-violet: #c6acff;
+  color-scheme: dark;
+  background: #060913;
+}
+
+.harness-sidebar {
+  background:
+    radial-gradient(circle at 0 0, #197d8061, transparent 34%),
+    radial-gradient(circle at 100% 100%, #803e9652, transparent 40%),
+    linear-gradient(160deg, #101e33, #090f1e 62%, #171127);
+  border-right: 1px solid #83d8e15c;
+  box-shadow: inset -1px 0 #c48eff2b, 15px 0 45px #01040db5;
+}
+
+.harness-sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 2px;
+  background: linear-gradient(180deg, transparent 6%, #89ffeb 21%, transparent 42%, #bc96ff 67%, transparent 94%);
+  opacity: .7;
+  pointer-events: none;
+  box-shadow: 0 0 15px #83ffee8c;
+}
+
+.harness-brand-mark {
+  transform: rotate(-4deg);
+  border-radius: 13px 4px 13px 4px;
+  box-shadow: 0 0 0 1px #c5fff0b0, 0 0 0 5px #79fae70e, 0 0 35px #6bffe179;
+}
+.harness-brand strong { text-shadow: 0 0 20px #8efdea36; }
+.harness-overline { color: #ffcf9b; letter-spacing: .17em; }
+.harness-workspace,
+.harness-project-select {
+  border-color: #6993a3;
+  background:
+    linear-gradient(90deg, #8efbe711 1px, transparent 1px) 0 0 / 25px 25px,
+    radial-gradient(circle at 100% 0, #a98cfa20, transparent 55%),
+    linear-gradient(140deg, #1b3549, #111f34);
+  box-shadow: inset 0 1px #e1fff32b, 0 12px 28px #0007;
+}
+.harness-project-select .harness-surface-artwork-button {
+  flex: none;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  overflow: hidden;
+  border-color: #7bd9d176;
+  border-radius: 8px 3px 8px 3px;
+}
+.harness-project-select .harness-surface-artwork-button img { width: 100%; height: 100%; object-fit: cover; }
+
+.harness-nav button { border-radius: 9px 3px 9px 3px; }
+.harness-nav button:hover,
+.harness-nav button:focus-visible {
+  background: #25415a;
+  border-color: #77e5de66;
+}
+.harness-nav button.active {
+  background: linear-gradient(95deg, #175e62, #243654 68%, #4c2b61);
+  border-color: #8affec8c;
+  box-shadow: inset 3px 0 #96ffef, 0 0 0 1px #6bfce819, 0 0 25px #6bfce835;
+}
+.harness-nav button.active > svg { color: #a5fff1; }
+.harness-session.active { background: #20475a; box-shadow: inset 2px 0 #a995ff; }
+.harness-session-open .harness-conversation-icon { float: left; width: 28px; height: 28px; margin: 0 8px 0 0; border: 1px solid #7bd9d178; border-radius: 7px 2px 7px 2px; object-fit: cover; }
+.harness-conversation-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.harness-conversation-dialog-head h2 { margin: 0; }
+.harness-conversation-artwork-button { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; overflow: hidden; border: 1px solid #7bd9d178; border-radius: 8px 3px 8px 3px; color: #9ef9ea; background: #1b394b; cursor: pointer; }
+.harness-conversation-artwork-button:hover { border-color: #b3fff2; box-shadow: 0 0 15px #72e9df40; }
+.harness-conversation-artwork-button img { width: 100%; height: 100%; object-fit: cover; }
+.harness-sidebar-signal {
+  background: linear-gradient(90deg, #123346, #30223e);
+  border-color: #77e8dd8a;
+  box-shadow: inset 0 1px #eafff321, 0 0 22px #71fce625;
+}
+
+.harness-main {
+  background:
+    radial-gradient(ellipse 55% 40% at 97% 0, var(--view-accent-soft, #a888ff35), transparent 82%),
+    radial-gradient(ellipse 47% 53% at 1% 98%, #0b748047, transparent 80%),
+    linear-gradient(145deg, #0a1426, #070b18 63%, #150e25);
+}
+.harness-main::before {
+  background-image:
+    linear-gradient(#7ee5ed11 1px, transparent 1px),
+    linear-gradient(90deg, #7ee5ed11 1px, transparent 1px),
+    radial-gradient(circle, #87fdec3b 1px, transparent 2px);
+  background-size: 48px 48px, 48px 48px, 96px 96px;
+  opacity: .8;
+}
+.harness-atmosphere-orbit,
+.harness-atmosphere-reticle { filter: drop-shadow(0 0 12px #71ffe84d); }
+.harness-atmosphere-network { stroke: #84f5e5; opacity: .58; }
+.harness-atmosphere-flare { filter: hue-rotate(23deg) saturate(1.3); }
+
+.harness-topbar {
+  background: linear-gradient(100deg, #0d1b2ef5, #171c36f0 66%, #2b1835eb);
+  border-bottom-color: #75b8bd91;
+  box-shadow: inset 0 1px #e3fff317, 0 10px 35px #0009;
+}
+.harness-top-actions {
+  border-color: #7bd8d38c;
+  background: linear-gradient(110deg, #183f50c9, #2b2647b8);
+}
+.harness-status-dot { background: #9affd9; box-shadow: 0 0 0 3px #9affd922, 0 0 16px #9affd9c7; }
+
+.harness-chat-header,
+.harness-page .harness-heading {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 35px, #81e2e912 36px),
+    radial-gradient(ellipse 42% 95% at 100% 0, var(--view-accent-soft, #a98cf72c), transparent),
+    linear-gradient(100deg, #10243bdc, #1a203bdd);
+  border-bottom: 1px solid #79c5ca8a;
+  box-shadow: inset 0 1px #eafff323, 0 14px 35px #0008;
+}
+.harness-chat-header h1,
+.harness-page .harness-heading h1 {
+  color: #f8fcff;
+  text-shadow: 0 0 25px var(--view-accent-soft, #7cfbe84b);
+}
+.harness-chat-header::before,
+.harness-page .harness-heading::before {
+  content: '';
+  position: absolute;
+  inset: auto auto 0 0;
+  width: min(40%, 360px);
+  height: 2px;
+  background: linear-gradient(90deg, var(--view-accent, #80f5e7), #b69aff 70%, transparent);
+  box-shadow: 0 0 16px var(--view-accent, #80f5e7);
+  pointer-events: none;
+}
+
+.harness-welcome {
+  border-color: #a3f8eeb5;
+  background:
+    radial-gradient(circle at 50% -8%, #81fff03b, transparent 40%),
+    radial-gradient(circle at 100% 100%, #bc92ff3a, transparent 43%),
+    linear-gradient(145deg, #1c3b50, #111b30 70%);
+  box-shadow: inset 0 1px #edfff454, 0 24px 66px #000d, 0 0 0 7px #75fbe711, 0 0 72px #72ffea2b;
+}
+.harness-welcome .harness-signal-art { filter: drop-shadow(0 0 30px #6fffe66b); }
+.harness-welcome h2 {
+  background: linear-gradient(105deg, #fff 17%, #a0fff0 60%, #d1baff);
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.harness-launch-grid button {
+  border-color: #6a94a6;
+  background: linear-gradient(135deg, #214253, #192943 65%, #302844);
+  box-shadow: inset 0 1px #eafff323, 0 9px 22px #0006;
+}
+.harness-launch-grid button:is(:hover, :focus-visible) {
+  border-color: #9dfff0;
+  box-shadow: inset 0 1px #eafff340, 0 0 23px #80f5e749;
+}
+
+.harness-compose {
+  background: linear-gradient(0deg, #070d1dfc, #101e31f2);
+  border-top: 1px solid #6ea5b767;
+}
+.harness-compose-box {
+  border-color: #76a9b6;
+  background: linear-gradient(135deg, #1b3c4e, #172b42 60%, #2b2849);
+  box-shadow: inset 0 1px #ecfff028, 0 17px 38px #000a;
+}
+.harness-compose-box:focus-within {
+  border-color: #aafff2;
+  box-shadow: inset 0 1px #effff047, 0 0 0 2px #80f5e74c, 0 0 37px #80f5e735, 0 18px 42px #000c;
+}
+.harness-message.user .harness-message-body { background: linear-gradient(110deg, #302d59, #1c3150); }
+.harness-message.assistant .harness-message-body { background: linear-gradient(100deg, #1b5c593b, transparent 70%); }
+
+.harness-page .harness-card,
+.harness-results button,
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences, .harness-file-list, .harness-file-editor) {
+  border-color: #60869a;
+  background-image:
+    radial-gradient(circle at 100% 0, var(--view-accent-soft, #80f5e72b), transparent 47%),
+    linear-gradient(145deg, #1b3048, #101d31 72%);
+  box-shadow: inset 0 1px #e5fff022, 0 13px 34px #0008;
+}
+.harness-page .harness-card:is(:hover, :focus-within),
+.harness-results button:is(:hover, :focus-visible) {
+  border-color: var(--view-accent, #80f5e7);
+  box-shadow: inset 0 1px #e5fff037, 0 18px 40px #000a, 0 0 27px var(--view-accent-soft, #80f5e731);
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) thead th {
+  color: #e7fff9;
+  background: linear-gradient(180deg, #2b4b61, #1a3048);
+  border-bottom-color: #9cfff08c;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:is(:hover, :focus-within) td { background-color: #214459; }
+
+/* Modal dialogs enter the browser top layer, outside the .harness ancestor. */
+dialog:is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog, .model-limit-dialog, .voice-editor-dialog, .speech-diagnostics-dialog, .transcription-dialog) {
+  color-scheme: dark;
+  color: #f0f7ff;
+  border-color: #76abb9;
+  background: linear-gradient(145deg, #1a2c43, #0d1a2d 75%);
+  box-shadow: 0 30px 90px #000c, 0 0 0 1px #9dfdec36, 0 0 55px #6ffbe51d;
+}
+dialog:is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog, .model-limit-dialog, .voice-editor-dialog, .speech-diagnostics-dialog, .transcription-dialog)::backdrop {
+  background: #030713c7;
+  backdrop-filter: blur(6px);
+}
+.harness :is(input, select, textarea) { color-scheme: dark; }
+.harness :is(input, select, textarea):focus-visible {
+  border-color: #9affee;
+  outline: 2px solid #9affee;
+  outline-offset: 2px;
+}
+.harness :is(.harness-primary, .harness-secondary, .harness-icon):not(:disabled):focus-visible,
+.harness-nav button:focus-visible { outline: 2px solid #b7fff1; outline-offset: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-sidebar::after { animation: cyber-edge 9s ease-in-out infinite alternate; }
+  .harness-atmosphere-sparks { animation: cyber-sparks 12s ease-in-out infinite alternate; }
+  .harness-welcome .harness-signal-art { animation: cyber-orbit 15s ease-in-out infinite alternate; }
+  .harness :is(.harness-primary, .harness-secondary, .harness-icon):not(:disabled),
+  .harness-nav button,
+  .harness-launch-grid button { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background-color .2s ease; }
+  .harness :is(.harness-primary, .harness-secondary, .harness-icon):not(:disabled):hover { transform: translateY(-2px); }
+  .harness-nav button:hover { transform: translateX(3px); }
+  .harness-page .harness-card:is(:hover, :focus-within),
+  .harness-results button:is(:hover, :focus-visible) { transform: translateY(-2px); }
+}
+@keyframes cyber-edge { to { opacity: .35; filter: hue-rotate(22deg); } }
+@keyframes cyber-sparks { to { transform: translate3d(-12px, 8px, 0); opacity: .48; } }
+@keyframes cyber-orbit { to { transform: rotate(3deg) scale(1.025); } }
+
+@media (max-width: 700px) {
+  .harness-sidebar::after { opacity: .4; }
+  .harness-atmosphere-network,
+  .harness-atmosphere-beam { display: none; }
+  .harness-chat-header::before,
+  .harness-page .harness-heading::before { width: 125px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .harness-sidebar::after,
+  .harness-atmosphere-sparks,
+  .harness-welcome .harness-signal-art { animation: none !important; }
+  .harness :is(.harness-primary, .harness-secondary, .harness-icon),
+  .harness-nav button,
+  .harness-launch-grid button { transition: none !important; }
+}
+
+/* Dense model lists get the same illuminated structure as the main workspace. */
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:nth-child(even) td {
+  background-color: #14263b;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody td:first-child {
+  box-shadow: inset 2px 0 transparent;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:is(:hover, :focus-within) td {
+  background-color: #244b60;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:is(:hover, :focus-within) td:first-child {
+  box-shadow: inset 2px 0 var(--view-accent, #80f5e7);
+}
+.harness :is(.browser-model-tabs, .diagnostic-tabs) button:not(.active):hover {
+  color: #e9fffb;
+  background: #223c52;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness-main::before,
+  .harness-status-dot,
+  .harness-welcome::before,
+  .harness-welcome-glyph,
+  .harness-dialog[open],
+  .harness-dialog[open]::backdrop,
+  .harness.is-working .harness-generating::after,
+  .harness .download-ring.active::before,
+  .harness .browser-model-tabs button.active::after,
+  .harness .diagnostic-tabs button.active::after {
+    animation: none !important;
+  }
+}
+
+/* Keep the conversation readable while the surrounding chrome carries the glow. */
+.harness-chat-messages {
+  background-color: #080f1ed9;
+  background-blend-mode: normal;
+}
+.harness-message { position: relative; }
+.harness-message::before {
+  content: '';
+  position: absolute;
+  top: 33px;
+  bottom: -22px;
+  left: 14px;
+  width: 1px;
+  background: linear-gradient(#69eadd68, #69eadd12);
+  pointer-events: none;
+}
+.harness-message.user::before { background: linear-gradient(#bb9cff68, #bb9cff12); }
+.harness-message-avatar { position: relative; z-index: 1; }
+.harness-message-content { color: #edf5ff; font-size: 14px; line-height: 1.68; }
+.harness-message-meta { font-size: 11px; }
+.harness-compose textarea { font-size: 14px; line-height: 1.55; }
+.harness-message.assistant .harness-message-body {
+  border-left-color: #78f9e5;
+  box-shadow: inset 10px 0 28px -28px #78f9e5;
+}
+.harness-message.user .harness-message-body {
+  border-color: #8c76c4;
+  box-shadow: inset 0 1px #ffffff1c, 0 10px 30px #02071678;
+}
+.harness-message-content ::selection,
+.harness-compose textarea::selection { color: #061322; background: #90f8e9; }
+
+@media (max-width: 700px) {
+  .harness-message-content { font-size: 13.5px; }
+  .harness-message::before { bottom: -11px; }
+}
+
+/* Focus and hover cues connect the artwork to the interactive surfaces. */
+.harness :is(.harness-primary, .harness-secondary, .harness-icon):not(:disabled):active {
+  filter: brightness(1.12);
+}
+.harness-message-avatar {
+  transition: box-shadow .25s ease, border-color .25s ease;
+}
+.harness-message:is(:hover, :focus-within) .harness-message-avatar {
+  box-shadow: 0 0 0 3px #83f9e51c, 0 0 20px #83f9e569;
+}
+.harness-message.user:is(:hover, :focus-within) .harness-message-avatar {
+  box-shadow: 0 0 0 3px #c7a5ff1c, 0 0 20px #c7a5ff69;
+}
+.harness :is(.harness-card, .browser-model-panel, .model-catalog):focus-within {
+  border-color: #8ef3e4;
+  box-shadow: inset 0 1px #e5fff02c, 0 0 0 1px #8ef3e42e, 0 0 24px #80f5e71b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness-message-avatar { transition: none; }
+}

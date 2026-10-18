@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { browserModelCatalogTools, catalogModelChoice, engineDownloadReview, modelDownloadReview, modelDownloadSpeedReview, modelDownloadStatus, searchModelCatalog } from '../src/harnessModelTools.ts';
+import { browserModelCatalogTools, catalogModelChoice, engineDownloadReview, modelDownloadQueueReview, modelDownloadReview, modelDownloadSpeedReview, modelDownloadStatus, searchModelCatalog } from '../src/harnessModelTools.ts';
 import { createModelDownloadManager, modelDownloadManager } from '../src/modelDownloadSession.ts';
 import { selectHarnessToolDefinitions } from '../src/harnessToolSelection.ts';
 import { discoverToolCategory } from '../src/harnessToolDiscovery.ts';
@@ -102,4 +102,51 @@ test('download speed changes immediately only to supported choices and asks by d
     const tiny = selectHarnessToolDefinitions(browserModelCatalogTools({}, true).definitions, 'Slow down the download speed', 1024).map(item => item.function.name);
     assert.equal(tiny[0], 'set_model_download_speed');
   } finally { modelDownloadManager.setSpeedLimit(previous); }
+});
+
+test('model queue controls review the current workspace and reject unpinned saved entries', async () => {
+  const model = catalogModelChoice('minicpm5-1b');
+  const queueFolder = item => ({ getDirectoryHandle: async () => ({ getFileHandle: async () => ({
+    getFile: async () => new File([JSON.stringify([item])], 'download-queue.json'),
+  }) }) });
+  const folder = queueFolder({ name: model.name, url: model.url, bytes: model.bytes });
+  const review = await modelDownloadQueueReview(folder, 'resume');
+  assert.equal(review.queue[0].id, model.id);
+  assert.equal(review.queue[0].sizeBytes, model.bytes);
+  await assert.rejects(modelDownloadQueueReview(folder, 'pause'), /no active model download queue/);
+  await assert.rejects(modelDownloadQueueReview(queueFolder({ name: model.name, url: 'https://example.com/other.gguf', bytes: model.bytes }), 'resume'), /unknown model/);
+  const definitions = browserModelCatalogTools(folder, true).definitions;
+  assert.equal(selectHarnessToolDefinitions(definitions, 'Pause the download', 1024)[0].function.name, 'pause_model_queue');
+  assert.equal(selectHarnessToolDefinitions(definitions, 'Resume the download', 1024)[0].function.name, 'resume_model_queue');
+  for (const name of ['pause_model_queue', 'resume_model_queue']) {
+    assert.equal(isMutatingToolName(name), true);
+    assert.equal(toolPermission(scope, name), 'ask');
+    assert.equal(toolPermission({ ...scope, workspaceReadOnly: true }, name), 'deny');
+    assert(discoverToolCategory(definitions, 'models', name, 'Manage a download', 4096, 512).some(item => item.function.name === name));
+  }
+});
+
+test('model queue tool actions use the reviewed snapshot and stay in its workspace', async () => {
+  const model = catalogModelChoice('minicpm5-1b');
+  const folder = {};
+  const other = {};
+  const saved = Object.fromEntries(['getAttachedFolder', 'getWorkspaceSnapshot', 'pause', 'resumeQueue'].map(name => [name, modelDownloadManager[name]]));
+  let state = { status: 'downloading', name: model.name, queuePaused: false, queue: [{ name: model.name, url: model.url, bytes: model.bytes }] };
+  let paused = false, resumed = false;
+  try {
+    modelDownloadManager.getAttachedFolder = () => folder;
+    modelDownloadManager.getWorkspaceSnapshot = candidate => candidate === folder ? state : null;
+    modelDownloadManager.pause = async () => { paused = true; state = { ...state, status: 'idle', queuePaused: true }; };
+    modelDownloadManager.resumeQueue = candidate => { assert.equal(candidate, folder); resumed = true; return true; };
+    const tools = browserModelCatalogTools(folder, true);
+    const review = await modelDownloadQueueReview(folder, 'pause');
+    await assert.rejects(modelDownloadQueueReview(other, 'pause'), /different workspace/);
+    await assert.rejects(tools.execute('pause_model_queue', { __reviewedQueue: { ...review, queue: [] } }), /changed during review/);
+    assert.equal(paused, false);
+    assert.equal(JSON.parse(await tools.execute('pause_model_queue', { __reviewedQueue: review })).status, 'paused');
+    assert.equal(paused, true);
+    const resumeReview = await modelDownloadQueueReview(folder, 'resume');
+    assert.equal(JSON.parse(await tools.execute('resume_model_queue', { __reviewedQueue: resumeReview })).status, 'resuming');
+    assert.equal(resumed, true);
+  } finally { for (const [name, method] of Object.entries(saved)) modelDownloadManager[name] = method; }
 });

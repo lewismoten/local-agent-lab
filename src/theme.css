@@ -275,7 +275,7 @@ progress { accent-color: var(--cyan); }
 .voice-table th,.voice-table td { color: var(--ink); border-color: var(--line); }
 .voice-play-button { color: var(--cyan); background: conic-gradient(var(--cyan) var(--voice-play-progress),#253d51 0); }
 .voice-play-button.playing { background: conic-gradient(var(--cyan) var(--voice-play-progress),#203749 0); }
-.voice-preview,.tripo-mesh-viewer,.motion-diagnostics-dialog figure,.motion-workspace figure,.motion-result small { color: var(--muted); }
+.voice-preview,.tripo-mesh-viewer,.motion-diagnostics-dialog figure,.motion-diagnostics-dialog .image-model-results small,.motion-workspace figure,.motion-result small { color: var(--muted); }
 .tripo-input-preview img,.tripo-clip-editor svg { border-color: var(--line); }
 .tripo-clip-editor svg { background: #17263a; }
 .tripo-viewer-toolbar strong { color: var(--cyan); }

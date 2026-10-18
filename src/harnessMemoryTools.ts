@@ -23,7 +23,7 @@ export function browserMemoryTools(store: Pick<HarnessStore, 'memory'>, meta: Co
     definitions: [
       { type: 'function', function: { name: 'search_memory', description: 'Find saved global, allowed-project, and current-conversation memories by topic. Returns brief excerpts and IDs.', parameters: { type: 'object', properties: { query: string('Specific topic or phrase.'), project: string('Allowed project ID; omit for the current project.') }, required: ['query'] } } },
       { type: 'function', function: { name: 'read_memory', description: 'Read a bounded part of one saved memory returned by search_memory.', parameters: { type: 'object', properties: { id: string('Memory ID returned by search_memory.'), project: string('Same project ID used when searching; omit for the current project.'), offset: { type: 'number', description: 'Character offset; omit for the start.' }, length: { type: 'number', description: 'Characters to read, up to 4000.' } }, required: ['id'] } } },
-      { type: 'function', function: { name: 'propose_memory', description: 'Draft one durable fact or preference worth remembering. The person reviews it before saving. Do not draft transient task details.', parameters: { type: 'object', properties: { title: string('Short title.'), content: string('Specific fact or preference, up to 2000 characters.'), scope: string('session, project, or global.'), tags: string('Optional comma-separated topics.') }, required: ['title', 'content'] } } },
+      { type: 'function', function: { name: 'propose_memory', description: 'Draft one durable fact or preference worth remembering. The person reviews it before saving. Do not draft transient task details.', parameters: { type: 'object', properties: { title: string('Short title.'), content: string('Specific fact or preference, up to 2000 characters.'), scope: string('session, project, or global.'), category: string('Broad topic such as About me, Preferences, People, Work, or Project.'), tags: string('Optional comma-separated specific topics.') }, required: ['title', 'content'] } } },
     ],
     execute: async (name, args) => {
       checkStopped();
@@ -41,7 +41,7 @@ export function browserMemoryTools(store: Pick<HarnessStore, 'memory'>, meta: Co
           .filter(item => item.score > 0)
           .sort((a, b) => b.score - a.score || b.record.updatedAt.localeCompare(a.record.updatedAt));
         return JSON.stringify({ project: projectId, matches: matches.slice(0, 8).map(({ record }) => ({
-          id: record.id, scope: record.scope, title: record.title, tags: record.tags,
+          id: record.id, scope: record.scope, title: record.title, category: record.category || 'General', tags: record.tags,
           updatedAt: record.updatedAt, excerpt: record.content.slice(0, 360), moreContent: record.content.length > 360,
         })), moreMatches: matches.length > 8 });
       }
@@ -54,7 +54,7 @@ export function browserMemoryTools(store: Pick<HarnessStore, 'memory'>, meta: Co
         checkStopped();
         if (!record || !canRead(record, projectId, sessionId)) throw new Error('Memory not found in the allowed scope.');
         const content = record.content.slice(offset, offset + length);
-        return JSON.stringify({ id, scope: record.scope, title: record.title, offset, content, nextOffset: offset + content.length < record.content.length ? offset + content.length : null });
+        return JSON.stringify({ id, scope: record.scope, title: record.title, category: record.category || 'General', offset, content, nextOffset: offset + content.length < record.content.length ? offset + content.length : null });
       }
       if (name === 'propose_memory') {
         const title = String(args.title || '').trim();
@@ -62,9 +62,10 @@ export function browserMemoryTools(store: Pick<HarnessStore, 'memory'>, meta: Co
         const proposedScope = String(args.scope || 'session');
         const memoryScope = proposedScope === 'global' || proposedScope === 'project' || proposedScope === 'session' ? proposedScope : 'session';
         const tags = String(args.tags || '').slice(0, 200);
+        const category = String(args.category || 'General').trim().slice(0, 40) || 'General';
         if (!title || title.length > 100 || !content || content.length > 2000) throw new Error('Use a title up to 100 characters and content up to 2000 characters.');
         if (memoryScope === 'session' && !meta.id) throw new Error('A conversation is required for session memory.');
-        return JSON.stringify({ draft: { title, content, scope: memoryScope, tags }, reviewRequired: true });
+        return JSON.stringify({ draft: { title, content, scope: memoryScope, category, tags }, reviewRequired: true });
       }
       throw new Error(`Unknown memory tool: ${name}`);
     },

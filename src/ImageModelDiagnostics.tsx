@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { BROWSER_IMAGE_MODEL_PATHS, assertBrowserImageFiles, browserImageAssets, browserImageDefaultSteps, browserImageModelLabel, browserImageOutputSize, browserImageTotal, type BrowserImageModelGroup } from './browserImageAssets';
-import { browserImagePreviewDataUrl, generateBrowserImage, setBrowserImageFolder } from './browserImage';
+import { BROWSER_IMAGE_MODEL_PATHS, assertBrowserImageFiles, browserImageAssets, browserImageDefaultSteps, browserImageLicenseLinks, browserImageModelLabel, browserImageOutputSize, browserImageTotal, type BrowserImageModelGroup } from './browserImageAssets';
+import { browserImagePreviewDataUrl } from './browserImage';
 import { acquireModel } from './harnessLease.ts';
 import { recordCapability } from './capabilityLedger';
 import { saveDiagnosticJson } from './diagnosticReports';
 import { inspectGreenLeafTestImage } from './imageTestQuality';
 import { showCompletionToast, showToast } from './toastStore';
 import { clearImageReadyForPreset, markImageReady } from './imageSession';
-import { browserImagePresetForGroup, type ImageConfig } from './imageGeneration';
+import { IMAGE_PRESETS, browserImagePresetForGroup, generateImage, type ImageConfig } from './imageGeneration';
 import { DEFAULT_IMAGE_TEST_PROMPT, isReferenceImagePrompt, loadImageTestPrompt, saveImageTestPrompt } from './imageTestPrompt';
 
 type Result = { file: string; checkedAt: string; runtime: string; scheduler: string; scoringVersion: number; tests: { files: { result: string; detail: string }; imageGeneration: { result: string; detail: string; prompt: string; seed: number; evaluation: 'reference' | 'preview'; greenPercent?: number } }; savedPath?: string };
@@ -60,10 +60,9 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
       if (run.signal.aborted) throw new DOMException('Image generation stopped.', 'AbortError');
       next.tests.files = { result: 'passed', detail: `${browserImageAssets(group).filter(asset => asset.name.endsWith('.onnx')).length} model components and the ONNX engine verified; license included.` };
       setReport({ ...next, tests: { ...next.tests } });
-      setBrowserImageFolder(folder);
-      const image = await generateBrowserImage(runPrompt, run.signal, setPhase, value => {
+      const image = await generateImage(IMAGE_PRESETS[preset], runPrompt, run.signal, setPhase, value => {
         setPreviews(current => [...current, { step: value.step, url: browserImagePreviewDataUrl(value.imageData) }]);
-      }, group, { seed, onStep: value => setStep(value) });
+      }, folder, value => setStep(value), seed);
       const quality = reference ? await inspectGreenLeafTestImage(image) : null;
       const bitmap = quality ? null : await createImageBitmap(image);
       const width = quality?.width ?? bitmap!.width, height = quality?.height ?? bitmap!.height;
@@ -111,7 +110,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
     <button className="button secondary compact" type="button" disabled={!folder || disabled} onClick={() => dialog.current?.showModal()}>Inspect features</button>
     <dialog ref={dialog} className="model-limit-dialog image-model-diagnostics" aria-labelledby="image-model-diagnostics-title">
       <h2 id="image-model-diagnostics-title">{label}</h2>
-      <p>🎨 Image generation · ONNX · {group === 'sdxs' ? 'Open RAIL++-M' : group === 'supra-mobile' ? 'Apache 2.0' : 'CreativeML Open RAIL-M'}</p>
+      <p>🎨 Image generation · ONNX · {browserImageLicenseLinks(group).map((item, index) => <span key={item.url}>{index > 0 ? ' · ' : ''}<a href={item.url} target="_blank" rel="noreferrer">{item.label}</a></span>)}{group !== 'supra-mobile' && <span> · Use restrictions apply</span>}</p>
       <label className="field image-test-prompt"><span>Prompt</span><textarea rows={2} maxLength={4000} value={promptText} disabled={busy} onChange={event => { setPromptText(event.target.value); saveImageTestPrompt(preset, event.target.value); }}/></label>
       <div className="settings-actions"><button className="button primary compact" type="button" disabled={!folder || busy || !promptText.trim()} onClick={() => void inspect()}>{busy ? 'Generating…' : isReferenceImagePrompt(promptText) ? 'Run image test' : 'Generate image'}</button>{busy && <button className="button danger compact" type="button" disabled={controller.current?.signal.aborted} onClick={() => { controller.current?.abort(); setPhase('Stopping…'); }}>Stop</button>}<button className="button secondary compact" type="button" disabled={busy || isReferenceImagePrompt(promptText)} onClick={() => { setPromptText(DEFAULT_IMAGE_TEST_PROMPT); saveImageTestPrompt(preset, DEFAULT_IMAGE_TEST_PROMPT); }}>Reset prompt</button><button className="button secondary compact" type="button" disabled={!report || busy} onClick={() => void copy()}>Copy JSON</button><button className="button secondary compact" type="button" disabled={busy} onClick={() => dialog.current?.close()}>Close</button></div>
       {busy && <div className="image-step-progress" role="status"><progress aria-label="Image test steps" value={step} max={steps}/><span>{step}/{steps}</span>{phase && !phase.startsWith('Generating image ·') && <span>{phase}</span>}</div>}

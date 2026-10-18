@@ -23,7 +23,7 @@ export default function BatchDiagnostics({ folder, models, config, disabled }: {
   }
   return <>
     <button className="button secondary compact" type="button" disabled={!folder || !models.length || disabled} onClick={() => dialog.current?.showModal()}>Run all diagnostics</button>
-    <dialog ref={dialog} className="model-diagnostics-dialog batch-diagnostics-dialog" aria-label="Run all model diagnostics">
+    <dialog ref={dialog} className={`model-diagnostics-dialog batch-diagnostics-dialog${batch.items.length ? ' has-results' : ''}`} aria-label="Run all model diagnostics">
       <h2>Run all diagnostics</h2>
       <p>Runs available tests for each installed GGUF and Needle model. Vision runs when its projector is available. JSON reports are saved to <code>models/diagnostics/</code>.</p>
       <div className="model-diagnostics-actions">

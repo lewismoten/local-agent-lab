@@ -162,6 +162,7 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
     getSnapshot: () => state,
     /** A live queue belongs only to the folder that started or resumed it. */
     getWorkspaceSnapshot: (folder: FileSystemDirectoryHandle) => queueFolder === folder || activeFolder === folder ? state : null,
+    getAttachedFolder: () => queueFolder || activeFolder,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setSpeedLimit(value: number) {
       const speedLimit = Number.isFinite(value) && value >= 0 ? value : 0;
@@ -276,7 +277,7 @@ export function createModelDownloadManager(initialSpeedLimit = DEFAULT_DOWNLOAD_
       if (queueFolder === folder && state.queue.some(item => item.licenseOnly && item.url !== url)) processPriorityLicenses();
       return true;
     },
-    pause() { publish({ queuePaused: true }); controller?.abort(); },
+    pause() { publish({ queuePaused: true }); controller?.abort(); return task || Promise.resolve(); },
     async pauseAndDetach() {
       this.pause();
       workspaceEpoch++;

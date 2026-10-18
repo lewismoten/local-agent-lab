@@ -1,7 +1,7 @@
 import { completeMetadata, parseJson, type AIConfig, type ChatTurn } from './ai.ts';
 import { browserContextWindow } from './browserContext.ts';
 import { continuesChapter } from './harnessChapters.ts';
-import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from './harnessCompaction.ts';
+import { carryForwardContext, compactionWindows, contextHeadTail, fallbackCompactionSummary, fallbackWindowSummary, parseModelMetadataJson, repeatsPreviousSummary, summaryHasSourceDetail, toolActivityText, unsupportedCompletedActions, userConstraintAnchors, usefulCompactionSummary } from './harnessCompaction.ts';
 import { memoryPromptExcerpt, relatedMemory } from './harnessMemoryPrompt.ts';
 import {
   cleanTags, estimatedTokens, isoNow, newId, searchTerms, titleCaseTag,
@@ -155,6 +155,13 @@ export async function compactConversation(meta: ConversationMeta, active: Harnes
         tags = fallbackTags(transcript);
         modelChapterDecision = null;
         onProgress?.('Model repeated the previous part; using new source excerpts.');
+      } else if (summary && !summaryHasSourceDetail(summary, active)) {
+        summary = fallbackCompactionSummary(active);
+        carryForward = '';
+        title = fallbackTitle(active);
+        tags = fallbackTags(transcript);
+        modelChapterDecision = null;
+        onProgress?.('Model summary omitted the new topics; using source excerpts.');
       }
     } catch { if (signal?.aborted) throw signal.reason || new DOMException('Stopped.', 'AbortError'); /* The full messages remain intact, so deterministic metadata is safe. */ }
   }

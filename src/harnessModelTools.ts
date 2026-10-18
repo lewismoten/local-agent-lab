@@ -5,7 +5,7 @@ import { maybeModelFile } from './modelFolders.ts';
 import { hasWritableFolderPermission } from './storage.ts';
 import { WLLAMA_ASSETS, getWllamaEngineDownload, wllamaEngineManager } from './wllamaEngine.ts';
 import { PRISM_ASSETS, getPrismEngineDownload, prismEngineManager } from './prismEngine.ts';
-import { modelDownloadManager, type QueuedModel } from './modelDownloadSession.ts';
+import { modelDownloadManager, resumeQueuedModels, type QueuedModel } from './modelDownloadSession.ts';
 
 const MAX_BROWSER_MODEL_BYTES = 2_000_000_000;
 const specialTerms = new Set(['gemma3-1b', 'qwen25-3b']);
@@ -55,6 +55,8 @@ const queueTool: ChatCompletionTool = { type: 'function', function: { name: 'que
 const engineTool: ChatCompletionTool = { type: 'function', function: { name: 'queue_browser_engine', description: 'Queue the pinned Wllama or PrismML browser engine after review. Wllama runs most GGUF models; PrismML runs Bonsai 2. Downloads continue in the background.', parameters: { type: 'object', properties: { engine: { type: 'string', description: 'wllama or prismml' } }, required: ['engine'] } } };
 const statusTool: ChatCompletionTool = { type: 'function', function: { name: 'get_model_download_status', description: 'Read the current workspace GGUF download queue and live progress, if any. Also returns the browser download speed.', parameters: { type: 'object', properties: {} } } };
 const speedTool: ChatCompletionTool = { type: 'function', function: { name: 'set_model_download_speed', description: 'Change the browser download speed immediately, including an active model or engine transfer. Requires review. Use 0 for unlimited or 0.25, 0.5, 1, 2, or 5 MiB/s.', parameters: { type: 'object', properties: { speedMiBps: { type: 'number' } }, required: ['speedMiBps'] } } };
+const pauseTool: ChatCompletionTool = { type: 'function', function: { name: 'pause_model_queue', description: 'Pause the current workspace GGUF transfer and queue after review. A partial file remains resumable.', parameters: { type: 'object', properties: {} } } };
+const resumeTool: ChatCompletionTool = { type: 'function', function: { name: 'resume_model_queue', description: 'Resume the current workspace GGUF download queue after review. Uses the saved browser speed limit.', parameters: { type: 'object', properties: {} } } };
 const missing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 async function savedDownloadQueue(folder: FileSystemDirectoryHandle): Promise<QueuedModel[]> {
   try {
@@ -72,9 +74,26 @@ export async function modelDownloadStatus(folder: FileSystemDirectoryHandle | nu
   const active = live?.status === 'downloading' ? { name: live.name, savedBytes: live.progress?.bytes || 0, totalBytes: live.progress?.total || 0, percent: live.progress?.total ? Math.floor(live.progress.bytes / live.progress.total * 100) : null } : null;
   return JSON.stringify({ workspace: 'connected', speedMiBps, active, paused: live?.queuePaused ?? true, queue: queue.map(item => ({ name: item.name, modelId: MODEL_CATALOG.find(model => model.url === item.url)?.id || null, licenseOnly: !!item.licenseOnly })), error: live?.error || '' });
 }
+export async function modelDownloadQueueReview(folder: FileSystemDirectoryHandle | null, action: 'pause' | 'resume'): Promise<Record<string, unknown>> {
+  if (!folder) throw new Error('Connect a project folder before controlling its model downloads.');
+  const attached = modelDownloadManager.getAttachedFolder();
+  if (attached && attached !== folder) throw new Error('A different workspace owns the current download queue. Open Models in this workspace before changing it.');
+  const live = modelDownloadManager.getWorkspaceSnapshot(folder);
+  const queue = live?.queue || await savedDownloadQueue(folder);
+  const models = queue.map(item => {
+    const pinned = MODEL_CATALOG.find(model => model.url === item.url && model.name === item.name && model.bytes === item.bytes);
+    if (!pinned) throw new Error(`The saved queue contains an unknown model: ${item.name}. Review it in Models before resuming.`);
+    return { name: item.name, id: pinned.id, licenseOnly: !!item.licenseOnly, sizeBytes: item.bytes };
+  });
+  if (action === 'pause' && (!live || live.queuePaused || live.status !== 'downloading' && !models.length))
+    throw new Error('There is no active model download queue to pause in this workspace.');
+  if (action === 'resume' && (!models.length || live && !live.queuePaused))
+    throw new Error(models.length ? 'The model download queue is already running.' : 'There are no queued models to resume in this workspace.');
+  return { action, active: live?.status === 'downloading' ? live.name : null, queue: models, speedMiBps: modelDownloadManager.getSnapshot().speedLimit };
+}
 export function browserModelCatalogTools(folder: FileSystemDirectoryHandle | null, allowQueue: boolean, signal?: AbortSignal): BrowserTools {
   return {
-    definitions: [searchTool, statusTool, ...(folder && allowQueue ? [queueTool, engineTool, speedTool] : [])],
+    definitions: [searchTool, statusTool, ...(folder && allowQueue ? [queueTool, engineTool, speedTool, pauseTool, resumeTool] : [])],
     execute: async (name, args) => {
       if (signal?.aborted) throw signal.reason || new DOMException('Model lookup stopped.', 'AbortError');
       if (name === 'search_model_catalog') return searchModelCatalog(args.query, args.limit);
@@ -83,6 +102,21 @@ export function browserModelCatalogTools(folder: FileSystemDirectoryHandle | nul
         const review = modelDownloadSpeedReview(args.speedMiBps);
         modelDownloadManager.setSpeedLimit(review.speedMiBps as number);
         return JSON.stringify({ status: 'updated', ...review });
+      }
+      if ((name === 'pause_model_queue' || name === 'resume_model_queue') && folder && allowQueue) {
+        const action = name === 'pause_model_queue' ? 'pause' : 'resume';
+        const review = await modelDownloadQueueReview(folder, action);
+        if (JSON.stringify(review) !== JSON.stringify(args.__reviewedQueue)) throw new Error('The model download queue changed during review. Check its current status and try again.');
+        if (action === 'pause') {
+          await modelDownloadManager.pause();
+          return JSON.stringify({ status: 'paused', queue: review.queue });
+        }
+        if (!await hasWritableFolderPermission(folder)) throw new Error('Grant write access to the workspace from Models, then try again.');
+        if (signal?.aborted) throw signal.reason || new DOMException('Model queue resume stopped.', 'AbortError');
+        if (!modelDownloadManager.getAttachedFolder()) await modelDownloadManager.discover(folder);
+        if (JSON.stringify(await modelDownloadQueueReview(folder, 'resume')) !== JSON.stringify(review)) throw new Error('The saved model download queue changed during review. Try again.');
+        await resumeQueuedModels(folder, () => {});
+        return JSON.stringify({ status: 'resuming', queue: review.queue });
       }
       if (name === 'queue_browser_engine' && folder && allowQueue) {
         const engine = engineChoice(args.engine);

@@ -1,0 +1,377 @@
+/* Nightshift: a dark, luminous shell with quieter reading surfaces. */
+.harness {
+  --h-bg: #050914;
+  --h-panel: #101b2e;
+  --h-panel-2: #182b42;
+  --h-line: #42667b;
+  --h-text: #f0f8ff;
+  --h-muted: #b6cbd8;
+  --h-cyan: #74f5e8;
+  --h-violet: #bda6ff;
+  color-scheme: dark;
+  background: #050914;
+}
+
+.harness-main {
+  background:
+    radial-gradient(ellipse 42% 42% at 100% 4%, #174f6166, transparent 80%),
+    radial-gradient(ellipse 45% 55% at 16% 95%, #4f255c42, transparent 78%),
+    #050914;
+}
+.harness-main::before {
+  background-image:
+    linear-gradient(#74dace0d 1px, transparent 1px),
+    linear-gradient(90deg, #74dace0d 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.harness-atmosphere { filter: saturate(1.2); }
+.harness-atmosphere-network { opacity: .5; }
+
+.harness-sidebar {
+  background:
+    radial-gradient(circle at 0 0, #1d687063, transparent 38%),
+    radial-gradient(circle at 100% 100%, #6a30704d, transparent 44%),
+    linear-gradient(170deg, #112437, #080f1f 66%, #151125);
+}
+.harness-sidebar::before {
+  background:
+    linear-gradient(90deg, #a0f3e811 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(#a0f3e80b 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(155deg, transparent 38%, #c488ff12 70%, transparent);
+  mask-image: linear-gradient(#000, #000a 72%, transparent);
+}
+.harness-brand { border-bottom-color: #6af3e64d; }
+.harness-brand-mark {
+  box-shadow: 0 0 0 1px #c5fff1b5, 0 0 0 5px #74f5e80e, 0 0 34px #6af8e67c;
+}
+.harness-brand small { letter-spacing: .16em; }
+.harness-workspace,
+.harness-project-select {
+  background:
+    radial-gradient(circle at 100% 0, #79ffe31c, transparent 43%),
+    linear-gradient(135deg, #19364a, #101c31 80%);
+  box-shadow: inset 0 1px #d6fff122, 0 12px 27px #0007;
+}
+
+.harness-nav button {
+  transition: color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.harness-nav button:hover { background: #213b50; }
+.harness-nav button.active {
+  background: linear-gradient(95deg, #1b5957, #233652 69%, #3a284e);
+  box-shadow: inset 3px 0 #89ffef, 0 0 0 1px #82f6e63a, 0 0 26px #7bf5e32a;
+}
+.harness-nav button.active > svg { background: #153c49; }
+.harness-session[aria-current='page'],
+.harness-session:focus-within { border-color: #82efe36e; }
+
+.harness-topbar {
+  background: linear-gradient(100deg, #0c1b2cf5, #151a32f0);
+  box-shadow: inset 0 1px #c5fff011, 0 9px 28px #0008;
+}
+.harness-top-actions { border-color: #5f9da7; }
+.harness-status-dot { box-shadow: 0 0 0 3px #74f5e81a, 0 0 14px #74f5e8ad; }
+
+.harness-chat-header,
+.harness-page .harness-heading {
+  background:
+    radial-gradient(ellipse 37% 90% at 100% 0, var(--view-accent-soft, #72efde25), transparent),
+    linear-gradient(90deg, #112138e8, #172239d1);
+  border-bottom-color: #65b4b660;
+}
+.harness-chat-header h1,
+.harness-page .harness-heading h1 {
+  color: #f6fbff;
+  text-shadow: 0 0 27px #6dedd642;
+}
+.harness-chat-header .harness-overline,
+.harness-page .harness-heading .harness-overline {
+  letter-spacing: .17em;
+}
+
+.harness-welcome {
+  border-color: #83e9dfb0;
+  background:
+    radial-gradient(circle at 50% -5%, #70f4e52d, transparent 42%),
+    radial-gradient(circle at 100% 100%, #b78aff2f, transparent 42%),
+    linear-gradient(145deg, #1b3549, #101c31 72%);
+  box-shadow: inset 0 1px #e1fff340, 0 25px 65px #000b, 0 0 0 7px #6df4df0a, 0 0 58px #65eede1c;
+}
+.harness-welcome h2 { background: linear-gradient(110deg, #fff 25%, #9ffff0 70%, #d3b8ff); background-clip: text; -webkit-text-fill-color: transparent; }
+.harness-welcome .harness-starter,
+.harness-page .harness-card {
+  box-shadow: inset 0 1px #e3fff021, 0 15px 34px #0008;
+}
+.harness-launch-grid button { background: linear-gradient(140deg, #1d3949, #1a2a42); }
+.harness-launch-grid button:nth-child(2) { background: linear-gradient(140deg, #2b3155, #1a2942); }
+.harness-launch-grid button:nth-child(3) { background: linear-gradient(140deg, #32303c, #1b2940); }
+
+.harness-compose {
+  background: linear-gradient(0deg, #071421fa, #0d1c2fe9);
+  box-shadow: 0 -14px 42px #020a1773;
+}
+.harness-compose-box {
+  border-color: #558a9b;
+  background: linear-gradient(135deg, #18364a, #14283d 58%, #242541);
+  box-shadow: inset 0 1px #effff01f, 0 14px 34px #0009;
+}
+.harness-compose-box:focus-within {
+  border-color: #a6fff1;
+  box-shadow: 0 0 0 2px #83f5e73d, 0 0 35px #68efdf2b, 0 16px 40px #000b;
+}
+.harness-message.assistant .harness-message-body { background: linear-gradient(100deg, #18404344, transparent 72%); }
+.harness-message.user .harness-message-body { background: linear-gradient(110deg, #26284c, #182a44); }
+
+.harness-page .harness-card,
+.harness-results button,
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences, .harness-file-list, .harness-file-editor) {
+  border-color: #52768a;
+  background-color: #111f33;
+}
+.harness-page .harness-card:hover,
+.harness-results button:hover { box-shadow: inset 0 1px #e8fff12b, 0 18px 40px #0009, 0 0 25px #76f2e41e; }
+.harness :is(.model-catalog-table, .engine-table, .voice-table) thead th {
+  color: #d9fff7;
+  background: linear-gradient(180deg, #294659, #1b3148);
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover td { background: #214257; }
+.harness-memory-filter { display: flex; align-items: center; justify-content: flex-end; gap: 9px; color: var(--h-muted); font-size: 11px; }
+.harness-memory-filter select { width: min(210px, 60%); }
+
+.harness .harness-primary:not(:disabled) {
+  background: linear-gradient(110deg, #78f8e5, #a9d7ff 68%, #c4acff);
+  border-color: #b4fff2;
+  color: #071b28;
+  box-shadow: 0 5px 20px #5be8dc30;
+}
+.harness .harness-primary:not(:disabled):hover { box-shadow: 0 7px 26px #76f2e46b, 0 0 0 1px #d5fff6; }
+.harness .harness-danger:not(:disabled) { background: #a73758; border-color: #ef7692; color: #fff; }
+
+/* A quiet activity display and a light sweep give the shell some life. */
+.harness-sidebar-signal span { will-change: transform, opacity; }
+.harness-topbar { position: relative; isolation: isolate; overflow: hidden; }
+.harness-topbar::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0 auto 0 -16%;
+  width: 24%;
+  background: linear-gradient(90deg, transparent, #75f5e90b 44%, #bd9aff0d 60%, transparent);
+  transform: translateX(0);
+  pointer-events: none;
+}
+.harness :is(.harness-primary, .harness-secondary, .harness-nav button):not(:disabled) {
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease,
+    box-shadow .18s ease, transform .18s ease;
+}
+.harness :is(.harness-primary, .harness-secondary):not(:disabled):active { transform: translateY(1px) scale(.99); }
+
+/* Carry the signal treatment into the working views and model controls. */
+.harness :is(.harness-journal-styles, .harness-journal-article, .harness-empty, .harness-preferences, .browser-model-panel) {
+  border-color: #527d91;
+  background-color: #101e32;
+  box-shadow: inset 0 1px #dcfff11b, 0 14px 36px #01081566;
+}
+.harness-journal-style-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0, #6bf0df1b, transparent 48%),
+    linear-gradient(145deg, #1a3348, #14243a);
+  box-shadow: inset 0 1px #d8fff01c;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.harness-journal-style-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, #7cf4e5, #bd9cff80, transparent);
+  opacity: .45;
+  pointer-events: none;
+}
+.harness-journal-style-card:is(:hover, :focus-within, .active) {
+  border-color: #88f3e6;
+  box-shadow: inset 0 1px #d8fff035, 0 12px 28px #01081580, 0 0 21px #6df4e423;
+}
+.harness-journal-style-card:is(:hover, :focus-within, .active)::before { opacity: 1; }
+.harness-journal-style-icon { box-shadow: 0 0 0 3px #6ceedd10, 0 0 18px #6ceedd32; }
+.harness :is(progress, .harness-progress progress) { accent-color: #74f5e8; }
+.harness :is(input[type='range'], input[type='checkbox']) { accent-color: #74f5e8; }
+.harness :is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog) {
+  color-scheme: dark;
+}
+.harness :is(.harness-dialog, .model-diagnostics-dialog, .diagnostic-detail-dialog) :is(pre, code) {
+  scrollbar-color: #4b8292 #0b1c2e;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-topbar::after { animation: nightshift-header 12s ease-in-out infinite; }
+  .harness-status-dot { animation: nightshift-online 3.4s ease-in-out infinite; }
+  .harness-welcome { animation: nightshift-arrive .46s cubic-bezier(.2,.8,.2,1) both; }
+  .harness-sidebar-signal span { animation: nightshift-signal 3.6s ease-in-out infinite alternate; }
+  .harness-sidebar-signal span:nth-child(3n) { animation-delay: -.9s; }
+  .harness-sidebar-signal span:nth-child(4n) { animation-delay: -1.7s; }
+  .harness-sidebar-signal span:nth-child(5n) { animation-delay: -2.4s; }
+  .harness-page .harness-card:hover,
+  .harness-results button:hover { transform: translateY(-2px); }
+  .harness-journal-style-card:is(:hover, :focus-within) { transform: translateY(-3px); }
+  .harness-journal-style-icon svg { transition: transform .25s ease; }
+  .harness-journal-style-card:is(:hover, :focus-within) .harness-journal-style-icon svg { transform: rotate(-7deg) scale(1.08); }
+}
+@keyframes nightshift-header { 50% { transform: translateX(38vw); opacity: .4; } }
+@keyframes nightshift-online { 50% { box-shadow: 0 0 0 5px #74f5e809, 0 0 19px #74f5e8dd; } }
+@keyframes nightshift-arrive { from { opacity: .45; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes nightshift-signal { from { transform: scaleY(.6); opacity: .52; } to { transform: scaleY(1.12); opacity: 1; } }
+
+@media (max-width: 700px) {
+  .harness-atmosphere-network { display: none; }
+  .harness-chat-header,
+  .harness-page .harness-heading { background: linear-gradient(105deg, #112138ef, #18263de0); }
+  .harness-welcome { box-shadow: inset 0 1px #e1fff334, 0 14px 38px #0009, 0 0 0 3px #6df4df0b; }
+  .harness-compose { box-shadow: 0 -8px 24px #020a1759; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .harness-topbar::after,
+  .harness-status-dot,
+  .harness-welcome,
+  .harness-sidebar-signal span { animation: none !important; }
+  .harness-page .harness-card:hover,
+  .harness-results button:hover,
+  .harness-journal-style-card:is(:hover, :focus-within) { transform: none; }
+}
+
+/* Neon studio: a stronger frame around the calm writing surface. */
+.harness {
+  --h-bg: #060814;
+  --h-panel: #111a2c;
+  --h-panel-2: #1b2941;
+  --h-line: #486581;
+  --h-cyan: #7dfff0;
+  --h-violet: #c1a7ff;
+  --h-text: #f5f8ff;
+  --h-muted: #bdccdf;
+  background: #060814;
+}
+
+.harness-main {
+  background:
+    radial-gradient(ellipse 51% 38% at 96% 5%, var(--view-accent-soft, #7dfff025), transparent 82%),
+    radial-gradient(ellipse 50% 50% at 3% 90%, #782b7b33, transparent 78%),
+    linear-gradient(145deg, #0b1427, #070b19 58%, #130e24);
+}
+.harness-main::before {
+  background-image:
+    linear-gradient(#82d6ef0d 1px, transparent 1px),
+    linear-gradient(90deg, #82d6ef0d 1px, transparent 1px),
+    radial-gradient(circle, #87fff22b 1px, transparent 2px);
+  background-size: 48px 48px, 48px 48px, 96px 96px;
+  opacity: .75;
+}
+
+.harness-sidebar {
+  background:
+    radial-gradient(circle at 0 0, #1b696d59, transparent 35%),
+    radial-gradient(circle at 100% 100%, #7c356a40, transparent 42%),
+    linear-gradient(165deg, #111d32, #090d1d 68%, #171126);
+  box-shadow: 12px 0 38px #01030c91, inset -1px 0 #a1a5ff38;
+}
+.harness-brand-mark {
+  border-radius: 14px 4px 14px 4px;
+  box-shadow: 0 0 0 1px #a5fff5b0, 0 0 26px #70ffee65, 0 0 45px #ad85ff24;
+}
+.harness-sidebar-signal {
+  border-color: #6ff5eb77;
+  background: linear-gradient(90deg, #132b3e, #231a39);
+}
+.harness-nav button.active {
+  background: linear-gradient(95deg, #15545a, #202f4c 63%, #41254b);
+  box-shadow: inset 3px 0 var(--view-accent, #7dfff0), 0 0 0 1px #7dfff033, 0 0 24px var(--view-accent-soft, #7dfff02a);
+}
+.harness-nav button:is(:hover, .active) > svg { filter: drop-shadow(0 0 9px currentColor); }
+
+.harness-topbar {
+  background: linear-gradient(100deg, #0d192af5, #151a32f2 64%, #251831ed);
+  border-bottom-color: #72a7af76;
+}
+.harness-top-actions {
+  border-color: #67cec878;
+  background: linear-gradient(100deg, #143746b8, #261d42ae);
+}
+.harness-status-dot { background: #8effd2; box-shadow: 0 0 0 3px #8effd21c, 0 0 16px #8effd2bb; }
+
+.harness-chat-header,
+.harness-page .harness-heading {
+  border-bottom-color: #79bbc27a;
+  background:
+    radial-gradient(ellipse 30% 95% at 100% 0, var(--view-accent-soft, #7dfff028), transparent),
+    repeating-linear-gradient(90deg, transparent 0 34px, #8deded0c 35px 36px),
+    linear-gradient(105deg, #102035ef, #172039df);
+  box-shadow: inset 0 1px #e5fff219, 0 12px 32px #0006;
+}
+.harness-chat-header h1,
+.harness-page .harness-heading h1 { text-shadow: 0 0 24px var(--view-accent-soft, #7dfff044); }
+.harness-page .harness-heading::after,
+.harness-chat-header::after { width: min(30%, 220px); }
+
+.harness-welcome {
+  border-color: #8cf5e8ad;
+  background:
+    radial-gradient(ellipse 45% 40% at 50% 0, #72ffed2e, transparent 90%),
+    radial-gradient(ellipse 65% 54% at 100% 100%, #b988ff2e, transparent 85%),
+    linear-gradient(145deg, #19344b, #111a2e 70%);
+  box-shadow: inset 0 1px #edfff443, 0 24px 65px #000c, 0 0 0 6px #6efbea0b, 0 0 65px #7effeb1d;
+}
+.harness-welcome::after {
+  background: linear-gradient(105deg, transparent 32%, #acfff018 50%, transparent 68%);
+  background-size: 230% 100%;
+}
+.harness-signal-core { box-shadow: 0 0 0 1px #a9fff5a1, 0 0 22px #73ffea95, 0 0 48px #be9aff4b; }
+.harness-launch-grid button {
+  background-image: linear-gradient(130deg, #25485a, #1a2944 62%, #29213e);
+  box-shadow: inset 0 1px #d8fff522;
+}
+
+.harness-compose { background: linear-gradient(0deg, #070d1dfb, #101c30f0); }
+.harness-compose-box {
+  border-color: #6ab3bb;
+  background: linear-gradient(135deg, #1a3448, #15283e 60%, #292341);
+  box-shadow: inset 0 1px #e6fff027, 0 16px 36px #0009;
+}
+.harness-compose-box:focus-within {
+  border-color: #a8fff3;
+  box-shadow: inset 0 1px #edfff045, 0 0 0 2px #7dfff049, 0 0 34px #7dfff030, 0 18px 40px #000b;
+}
+
+.harness-page .harness-card,
+.harness-results button,
+.harness :is(.browser-model-panel, .model-catalog, .harness-preferences, .harness-file-list, .harness-file-editor) {
+  border-color: #5d8197;
+  background-image:
+    radial-gradient(circle at 100% 0, var(--view-accent-soft, #7dfff01a), transparent 47%),
+    linear-gradient(145deg, #1b2c44, #101b2d 72%);
+  box-shadow: inset 0 1px #e4fff01c, 0 13px 35px #0007;
+}
+.harness-page .harness-card:is(:hover, :focus-within),
+.harness-results button:hover { border-color: var(--view-accent, #7dfff0); }
+.harness :is(.model-catalog-table, .engine-table, .voice-table) thead th {
+  background: linear-gradient(180deg, #2c4860, #1c2e49);
+  border-bottom-color: #8afded75;
+}
+.harness :is(.model-catalog-table, .engine-table, .voice-table) tbody tr:hover td { background: #254359; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness-main::before { animation: neon-grid-drift 42s linear infinite alternate; }
+  .harness-welcome .harness-signal-core { animation: neon-core-breathe 4.5s ease-in-out infinite alternate; }
+  .harness-page .harness-heading::after,
+  .harness-chat-header::after { animation: neon-rule-breathe 3.8s ease-in-out infinite alternate; }
+  .harness-nav button:is(:hover, .active) > svg { transition: filter .2s ease, transform .2s ease; }
+}
+@keyframes neon-grid-drift { to { background-position: 24px 24px, 24px 24px, 0 0; } }
+@keyframes neon-core-breathe { to { box-shadow: 0 0 0 1px #a9fff5, 0 0 35px #73ffeab8, 0 0 63px #be9aff75; } }
+@keyframes neon-rule-breathe { to { opacity: .52; filter: saturate(1.4); } }
+
+@media (max-width: 700px) {
+  .harness-page .harness-heading::after,
+  .harness-chat-header::after { width: 90px; }
+}

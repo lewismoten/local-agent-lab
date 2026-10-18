@@ -11,7 +11,7 @@ export const TOOL_CATEGORIES = {
   tasks: ['list_tasks', 'read_task', 'claim_task', 'add_task_note', 'set_task_status'],
   agents: ['list_agents', 'propose_agent'],
   projects: ['get_project_instructions', 'propose_project_instructions', 'propose_project'],
-  models: ['search_model_catalog', 'get_model_download_status', 'get_model_preferences', 'get_project_chat_profile', 'propose_project_chat_profile', 'queue_model_download', 'queue_browser_engine', 'set_model_download_speed', 'set_model_preferences'],
+  models: ['search_model_catalog', 'get_model_download_status', 'get_model_preferences', 'get_project_chat_profile', 'propose_project_chat_profile', 'queue_model_download', 'queue_browser_engine', 'set_model_download_speed', 'pause_model_queue', 'resume_model_queue', 'set_model_preferences'],
   journal: ['get_journal_settings', 'list_journal_days', 'read_journal_day', 'set_journal_enabled'],
   topics: ['list_project_tags', 'find_tagged_conversations'],
   recovery: ['list_backups', 'inspect_backup', 'restore_backup', 'file_info'],

@@ -51,7 +51,7 @@ export function selectHarnessToolDefinitions(definitions: ChatCompletionTool[], 
   const projectSetup = /\bprojects?\b/.test(text) && /\b(create|make|new|set up|configure|design|propose|draft|add|start)\b/.test(text);
   const models = /\b(models?|gguf|weights?|quantiz\w*|wllama|prismml|engines?)\b/.test(text)
     || /\b(fallbacks?|model priority|model preferences|ai profiles?|chat profiles?|project profiles?)\b/.test(text)
-    || /\bdownload(?:s|ing)?\b/.test(text) && /\b(speed|throttl\w*|bandwidth|queue|progress|status|paused)\b/.test(text);
+    || /\bdownload(?:s|ing)?\b/.test(text) && /\b(speed|throttl\w*|bandwidth|queue|progress|status|pause|paused|resume|continue|stop)\b/.test(text);
   const journal = /\b(journals?|daily log|work log|what (?:i|we|you) did (?:today|yesterday)|yesterday.s work)\b/.test(text);
   const topics = /\b(tags?|tag cloud|topics?|related conversations?|conversations? about)\b/.test(text);
   const syntax = /\b(syntax|parsing?|compile|lint|validate|verify)\b/.test(text) || /\bcheck\b/.test(text) && /\.(?:jsx?|tsx?|mjs|cjs|json)\b/.test(text);
@@ -108,6 +108,8 @@ export function selectHarnessToolDefinitions(definitions: ChatCompletionTool[], 
       if (/\b(wllama|prismml|engines?)\b/.test(text)) score('queue_browser_engine', 22);
     }
     if (speedIntent) score('set_model_download_speed', 25);
+    if (/\b(?:pause|stop|hold)\b/.test(text) && /\b(?:download|queue|transfer)\b/.test(text)) score('pause_model_queue', 28);
+    if (/\b(?:resume|continue|restart)\b/.test(text) && /\b(?:download|queue|transfer)\b/.test(text)) score('resume_model_queue', 28);
   }
   if (journal) {
     score('list_journal_days', 15); score('read_journal_day', 14);

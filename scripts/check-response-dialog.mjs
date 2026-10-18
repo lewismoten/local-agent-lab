@@ -58,8 +58,8 @@ try {
       version: 2, createdAt: new Date().toISOString(), model,
       input: { system: 'Inspect project files before changing them. '.repeat(35), turns: [{ role: 'user', content: 'Find the parser issue and explain the fix.' }], note: 'Initial submitted prompt.' },
       output: { text: '**Fixed** the parser condition.\\n\\n\u0060\u0060\u0060ts\\nif (escaped) return token;\\n\u0060\u0060\u0060', thinking: 'I checked the escaped quote branch.', toolEvents: ['read_file: src/parser.ts returned 120 lines'] },
-      rounds: [{ request: { model: 'test-small.gguf', messages: [{ role: 'user', content: 'Find the parser issue.' }], max_tokens: 512, temperature: 0.4, seed: 42 }, response: { text: 'Fixed the parser condition.', thinking: 'I checked the escaped quote branch.', finishReason: 'stop', inputTokens: 300, outputTokens: 70 }, toolResults: [{ name: 'read_file', content: 'src/parser.ts: escaped quote branch' }] }],
-      usage: { inputTokens: 300, outputTokens: 70, elapsedMs: 4000, observedTokensPerSecond: 17.5 }, sampling: { seed: 42, temperature: 0.4, note: 'Submitted in every model round.' },
+      rounds: [{ request: { model: 'test-small.gguf', messages: [{ role: 'user', content: 'Find the parser issue.' }], max_tokens: 512, temperature: 0.4, seed: 42 }, response: { text: 'Fixed the parser condition.', thinking: 'I checked the escaped quote branch.', finishReason: 'stop', inputTokens: 300, cachedInputTokens: 180, outputTokens: 70 }, toolResults: [{ name: 'read_file', content: 'src/parser.ts: escaped quote branch' }] }],
+      usage: { inputTokens: 300, cachedInputTokens: 180, outputTokens: 70, elapsedMs: 4000, observedTokensPerSecond: 17.5 }, sampling: { seed: 42, temperature: 0.4, note: 'Submitted in every model round.' },
     };
     await store.saveResponseDiagnostic('home', meta.id, messageId, report);
     await store.appendConversationMessage(meta, { id: messageId, role: 'assistant', content: 'Fixed the parser condition.', createdAt: new Date().toISOString(), model, hasDiagnostics: true });
@@ -79,7 +79,7 @@ try {
   })()`, 'saved diagnostic');
   if (visible.scrollWidth > visible.width + 2) throw new Error(`Diagnostic dialog overflows horizontally: ${visible.scrollWidth} > ${visible.width}.`);
   if (!visible.ordered) throw new Error('Diagnostic header, metrics, and sections are out of order.');
-  if (!visible.stats.includes('17.5 tok/s') || !visible.stats.includes('0.4') || visible.rounds !== 1 || !visible.downloadEnabled) throw new Error(`Diagnostic is incomplete: ${JSON.stringify(visible)}`);
+  if (!visible.stats.includes('17.5 tok/s') || !visible.stats.includes('0.4') || !visible.stats.includes('Cached 180') || visible.rounds !== 1 || !visible.downloadEnabled) throw new Error(`Diagnostic is incomplete: ${JSON.stringify(visible)}`);
   if (process.env.SCREENSHOT) {
     await new Promise(resolve => setTimeout(resolve, 350));
     const shot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
@@ -93,7 +93,7 @@ try {
     const names = await readdir(downloadDir);
     if (names.includes(`response-${fixture.messageId}.json`)) {
       const saved = JSON.parse(await readFile(join(downloadDir, `response-${fixture.messageId}.json`), 'utf8'));
-      if (saved.sampling.temperature !== 0.4 || saved.rounds[0].request.seed !== 42) throw new Error('The downloaded trace lost sampling settings.');
+      if (saved.sampling.temperature !== 0.4 || saved.rounds[0].request.seed !== 42 || saved.usage.cachedInputTokens !== 180) throw new Error('The downloaded trace lost sampling or prompt cache settings.');
       downloaded = true; break;
     }
     await new Promise(resolve => setTimeout(resolve, 100));

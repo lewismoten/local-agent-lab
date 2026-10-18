@@ -4,6 +4,8 @@ const appUrl = process.env.APP_URL || 'http://127.0.0.1:5198/';
 const endpoint = process.env.OLLAMA_ENDPOINT || 'http://127.0.0.1:11434';
 const model = process.env.OLLAMA_MODEL || 'llama3.2:1b';
 const captureModelOutput = process.env.CAPTURE_MODEL_OUTPUT === '1';
+const extraPhases = Number(process.env.EXTRA_COMPACTION_PHASES || '0');
+if (!Number.isSafeInteger(extraPhases) || extraPhases < 0 || extraPhases > 12) throw new Error('EXTRA_COMPACTION_PHASES must be an integer from 0 to 12.');
 
 const exchanges = [
   ['Create project Meridian. Private documents must stay on the removable drive; never upload them to a service.', 'Recorded the privacy rule for Meridian. I have not uploaded or modified any files.'],
@@ -27,6 +29,18 @@ const exchanges = [
   ['Plan a physical removable-drive test before changing the storage format.', 'A physical USB measurement remains pending; no SQLite migration has been chosen.'],
   ['Keep the privacy rule and unfinished Unicode tests visible in future context.', 'The next action is to verify both against original messages after compaction. Unicode escape tests remain pending.'],
 ];
+const topics = ['parser', 'portable storage', 'journal', 'agent scheduler', 'model catalog', 'image diagnostics', 'voice profiles', 'history search', 'Git review', 'offline shell'];
+const groups = [exchanges.slice(0, 12), exchanges.slice(12), ...Array.from({ length: extraPhases }, (_, phase) =>
+  topics.map((topic, index) => [
+    `Month ${phase + 3}, review ${topic} case ${phase + 1}-${index + 1}. Keep the current decision in original history and ask before a destructive change.`,
+    `Review note ${phase + 1}-${index + 1}: ${topic} still needs a real-world check. No destructive change or Git commit was made for this case.`,
+  ]))];
+const expectedRanges = groups.reduce((ranges, group) => {
+  const startSeq = ranges.length ? ranges.at(-1).endSeq + 1 : 0;
+  ranges.push({ startSeq, endSeq: startSeq + group.length * 2 - 1 });
+  return ranges;
+}, []);
+const expectedCount = expectedRanges.at(-1).endSeq + 1;
 
 const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const page = pages.find(item => item.type === 'page' && item.url.startsWith(appUrl));
@@ -57,61 +71,72 @@ const expression = `(async () => {
   const { HarnessStore } = await import('/src/harnessStore.ts');
   const { createConversation } = await import('/src/harnessData.ts');
   const { compactConversation } = await import('/src/harnessContext.ts');
-  const exchanges = ${JSON.stringify(exchanges)};
+  const groups = ${JSON.stringify(groups)};
   const rawModelOutputs = [];
   const captures = [];
-  const originalFetch = window.fetch.bind(window);
-  if (${JSON.stringify(captureModelOutput)}) window.fetch = async (...args) => {
+  let modelCalls = 0, modelSuccessfulCalls = 0;
+  const nativeFetch = window.fetch;
+  const originalFetch = nativeFetch.bind(window);
+  window.fetch = async (...args) => {
     const response = await originalFetch(...args);
-    if (String(args[0]).includes('/api/chat')) {
-      captures.push(response.clone().text().then(raw => {
-        const chunks = raw.trim().split('\\n').map(line => JSON.parse(line));
-        rawModelOutputs.push({ text: chunks.map(chunk => chunk.message?.content || '').join('').slice(0, 1000), reason: chunks.at(-1)?.done_reason || '' });
-      }).catch(() => { /* Preserve the original response for the app. */ }));
+    if (String(args[0]) === ${JSON.stringify(endpoint.replace(/\/$/, '') + '/api/chat')}) {
+      modelCalls++;
+      if (response.ok) modelSuccessfulCalls++;
+      if (${JSON.stringify(captureModelOutput)}) captures.push(response.clone().text().then(raw => {
+          const chunks = raw.trim().split('\\n').map(line => JSON.parse(line));
+          rawModelOutputs.push({ text: chunks.map(chunk => chunk.message?.content || '').join('').slice(0, 1000), reason: chunks.at(-1)?.done_reason || '' });
+        }).catch(() => { /* Preserve the original response for the app. */ }));
     }
     return response;
   };
   const workspaceId = 'check-' + crypto.randomUUID();
   const store = new HarnessStore(workspaceId, null);
-  await store.manifest();
-  let meta = createConversation('home');
-  const original = [];
-  const config = { id: 'ollama', label: 'Local Ollama', provider: 'ollama', model: ${JSON.stringify(model)}, endpoint: ${JSON.stringify(endpoint)}, apiKey: '', effort: 'default', thinkingTokens: 0, maxOutputTokens: 256, contextWindow: 1536 };
-  const timings = [];
-  for (const [phase, group] of [exchanges.slice(0, 12), exchanges.slice(12)].entries()) {
-    const active = [];
-    for (const [index, pair] of group.entries()) {
-      for (const [turn, content] of pair.entries()) {
-        const seq = original.length;
-        const message = { id: crypto.randomUUID(), role: turn ? 'assistant' : 'user', createdAt: new Date(Date.UTC(2026, 0, 1) + seq * 86_400_000).toISOString(), content };
-        meta = await store.appendMessage(meta, message);
-        const stored = { ...message, seq };
-        original.push(stored); active.push(stored);
+  let report;
+  try {
+    await store.manifest();
+    let meta = createConversation('home');
+    const original = [];
+    const config = { id: 'ollama', label: 'Local Ollama', provider: 'ollama', model: ${JSON.stringify(model)}, endpoint: ${JSON.stringify(endpoint)}, apiKey: '', effort: 'default', thinkingTokens: 0, maxOutputTokens: 256, contextWindow: 1536 };
+    const timings = [];
+    for (const [phase, group] of groups.entries()) {
+      const active = [];
+      for (const pair of group) {
+        for (const [turn, content] of pair.entries()) {
+          const seq = original.length;
+          const message = { id: crypto.randomUUID(), role: turn ? 'assistant' : 'user', createdAt: new Date(Date.UTC(2026, 0, 1) + seq * 86_400_000).toISOString(), content };
+          meta = await store.appendMessage(meta, message);
+          const stored = { ...message, seq };
+          original.push(stored); active.push(stored);
+        }
       }
+      await store.updateSessions('home', current => [meta, ...current.filter(item => item.id !== meta.id)]);
+      const started = performance.now();
+      meta = await compactConversation(meta, active, config, undefined, message => console.log('COMPACT_PROGRESS', 'phase ' + (phase + 1) + ': ' + message));
+      timings.push(Math.round(performance.now() - started));
+      await store.updateSessions('home', current => [meta, ...current.filter(item => item.id !== meta.id)]);
     }
-    await store.updateSessions('home', current => [meta, ...current.filter(item => item.id !== meta.id)]);
-    const started = performance.now();
-    meta = await compactConversation(meta, active, config, undefined, message => console.log('COMPACT_PROGRESS', 'phase ' + (phase + 1) + ': ' + message));
-    timings.push(Math.round(performance.now() - started));
-    await store.updateSessions('home', current => [meta, ...current.filter(item => item.id !== meta.id)]);
+    const saved = await store.messages(meta, 0, meta.messageCount);
+    await Promise.all(captures);
+    report = { timings, count: saved.length, originalsPreserved: saved.every((item, index) => item.content === original[index].content), activeFrom: meta.activeFrom, segments: meta.segments.map(item => ({ startSeq: item.startSeq, endSeq: item.endSeq, startAt: item.startAt, endAt: item.endAt, title: item.title, summary: item.summary })), contextSummary: meta.contextSummary, privacyRetained: meta.contextSummary.includes('never upload them to a service'), modelCalls, modelSuccessfulCalls, ...(rawModelOutputs.length ? { rawModelOutputs } : {}) };
+  } finally {
+    window.fetch = nativeFetch;
+    await Promise.allSettled(captures);
+    try {
+      const database = await new Promise((resolve, reject) => {
+        const opening = indexedDB.open('local-agent-lab');
+        opening.onsuccess = () => resolve(opening.result);
+        opening.onerror = () => reject(opening.error);
+      });
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction('records', 'readwrite');
+        const cursor = transaction.objectStore('records').openKeyCursor(IDBKeyRange.bound(workspaceId + ':', workspaceId + ':' + String.fromCharCode(65535)));
+        cursor.onsuccess = () => { if (cursor.result) { transaction.objectStore('records').delete(cursor.result.primaryKey); cursor.result.continue(); } };
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      database.close();
+    } catch (error) { console.warn('Compaction check could not clear its temporary workspace:', error); }
   }
-  const saved = await store.messages(meta, 0, meta.messageCount);
-  await Promise.all(captures);
-  window.fetch = originalFetch;
-  const report = { timings, count: saved.length, originalsPreserved: saved.every((item, index) => item.content === original[index].content), activeFrom: meta.activeFrom, segments: meta.segments.map(item => ({ startSeq: item.startSeq, endSeq: item.endSeq, startAt: item.startAt, endAt: item.endAt, title: item.title, summary: item.summary })), contextSummary: meta.contextSummary, privacyRetained: meta.contextSummary.includes('never upload them to a service'), ...(rawModelOutputs.length ? { rawModelOutputs } : {}) };
-  const database = await new Promise((resolve, reject) => {
-    const opening = indexedDB.open('local-agent-lab');
-    opening.onsuccess = () => resolve(opening.result);
-    opening.onerror = () => reject(opening.error);
-  });
-  await new Promise((resolve, reject) => {
-    const transaction = database.transaction('records', 'readwrite');
-    const cursor = transaction.objectStore('records').openKeyCursor(IDBKeyRange.bound(workspaceId + ':', workspaceId + ':' + String.fromCharCode(65535)));
-    cursor.onsuccess = () => { if (cursor.result) { transaction.objectStore('records').delete(cursor.result.primaryKey); cursor.result.continue(); } };
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  database.close();
   return report;
 })()`;
 try {
@@ -120,7 +145,10 @@ try {
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
   const report = result.result.value;
   console.log(JSON.stringify(report, null, 2));
-  if (!report || report.count !== 40 || !report.originalsPreserved || report.activeFrom !== 40 || report.segments.length !== 2 || report.segments[0].startSeq !== 0 || report.segments[0].endSeq !== 23 || report.segments[1].startSeq !== 24 || report.segments[1].endSeq !== 39 || !report.privacyRetained || report.segments[0].summary.replace(/\W/g, '').toLowerCase() === report.segments[1].summary.replace(/\W/g, '').toLowerCase()) {
+  if (!report || report.modelSuccessfulCalls < expectedRanges.length) throw new Error(`Live compaction did not reach the selected model for every phase (${report?.modelSuccessfulCalls || 0}/${expectedRanges.length} successful chat requests).`);
+  if (report.count !== expectedCount || !report.originalsPreserved || report.activeFrom !== expectedCount || report.segments.length !== expectedRanges.length
+    || report.segments.some((part, index) => part.startSeq !== expectedRanges[index].startSeq || part.endSeq !== expectedRanges[index].endSeq)
+    || !report.privacyRetained || report.segments.some((part, index) => index > 0 && part.summary.replace(/\W/g, '').toLowerCase() === report.segments[index - 1].summary.replace(/\W/g, '').toLowerCase())) {
     throw new Error('Compaction lost original messages, boundaries, a durable privacy rule, or a distinct part summary.');
   }
 } finally { socket.close(); }

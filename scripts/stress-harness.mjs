@@ -1,6 +1,6 @@
 /** Repeatable local history workload. Run: node scripts/stress-harness.mjs --mb 100 --latency-ms 1 */
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -17,6 +17,8 @@ const numberArg = (name, fallback) => {
 };
 const targetBytes = Math.floor(numberArg('--mb', 100) * 1024 * 1024);
 const latencyMs = numberArg('--latency-ms', 0);
+const packHistory = process.argv.includes('--pack');
+const variedHistory = process.argv.includes('--varied');
 if (targetBytes <= 0) throw new Error('--mb must be greater than zero.');
 const pause = () => latencyMs ? new Promise(resolve => setTimeout(resolve, latencyMs)) : Promise.resolve();
 const elapsed = async (label, action) => {
@@ -67,8 +69,23 @@ const store = new HarnessStore('stress-workspace', folder);
 const source = createConversation('home');
 const root = `harness/projects/home/sessions/${source.id}`;
 const payload = 'Coding research decisions and file review. '.repeat(145);
+const terms = ['parser', 'cache', 'router', 'editor', 'journal', 'search', 'agent', 'worker', 'canvas', 'storage', 'schema', 'index', 'preview', 'history', 'profile', 'upload', 'branch', 'model', 'stream', 'project', 'session', 'diagnostic', 'permission', 'offline'];
+const variedPayload = seq => {
+  let state = Math.imul(seq + 1, 2654435761) >>> 0;
+  const lines = [];
+  for (let line = 0; line < 68; line++) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const area = terms[(state >>> 8) % terms.length];
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const subject = terms[(state >>> 8) % terms.length];
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const action = terms[(state >>> 8) % terms.length];
+    lines.push(`src/${area}/${subject}.ts:${line + 1} inspect ${action} for case ${seq}-${line}; record outcome ${state.toString(36)} and follow-up notes.\n`);
+  }
+  return lines.join('');
+};
 let bytes = 0, count = 0, group = [], newest = [];
-console.log(`Target: ${(targetBytes / 1048576).toFixed(1)} MiB · simulated lookup latency: ${latencyMs} ms`);
+console.log(`Target: ${(targetBytes / 1048576).toFixed(1)} MiB · simulated lookup latency: ${latencyMs} ms · ${variedHistory ? 'varied' : 'repetitive'} content`);
 try {
   await elapsed('Create indexed history', async () => {
     while (bytes < targetBytes) {
@@ -76,7 +93,7 @@ try {
         const seq = count + offset;
         const date = new Date(Date.UTC(2025, 0, 1) + Math.floor(seq / 100) * 86400000).toISOString();
         return { id: `m-${seq}`, seq, role: seq % 2 ? 'assistant' : 'user', createdAt: date,
-          content: `${seq === 12 ? 'ancient_unique_marker ' : ''}${payload} Message ${seq}.` };
+          content: `${seq === 12 ? 'ancient_unique_marker ' : ''}${variedHistory ? variedPayload(seq) : payload} Message ${seq}.` };
       });
       const blob = new Blob([JSON.stringify(chunk)]);
       const number = count / MESSAGE_CHUNK_SIZE;
@@ -91,6 +108,14 @@ try {
     if (group.length) await writeBlob(folder, `${root}/search/${String(Math.floor((count / MESSAGE_CHUNK_SIZE - 1) / 64)).padStart(6, '0')}.json`, new Blob([JSON.stringify({ version: 1, chunks: group })]));
   });
   const meta = { ...source, messageCount: count, activeFrom: count - MESSAGE_CHUNK_SIZE };
+  if (packHistory) {
+    const packed = await elapsed('Pack completed portable chunks', () => store.packCompletedChunks(meta));
+    const remaining = await readdir(path.join(directory, root, 'chunks'));
+    const packs = packed.groups ? await readdir(path.join(directory, root, 'packs')) : [];
+    assert.equal(remaining.length, Math.ceil(count / MESSAGE_CHUNK_SIZE) % 16);
+    assert.equal(packs.length, Math.floor(Math.ceil(count / MESSAGE_CHUNK_SIZE) / 16));
+    console.log(`  Packed ${packed.groups} groups; removed ${packed.removed} chunks; ${remaining.length} loose chunks and ${packs.length} pack files remain.`);
+  }
   const before = { ...stats };
   const hits = await elapsed('Search oldest indexed message', () => store.searchMessages(meta, 'ancient_unique_marker', 8));
   assert.deepEqual(hits.map(item => item.seq), [12]);
@@ -109,7 +134,23 @@ try {
   assert.equal((await store.recentMessages(copy, 1))[0].seq, count - 1);
   assert.equal((await store.searchMessages(copy, 'ancient_unique_marker', 1))[0].seq, 12);
   const copyReads = stats.reads - copyBefore.reads;
-  assert.ok(copyReads <= Math.ceil(count / MESSAGE_CHUNK_SIZE) + 2 * Math.ceil(count / MESSAGE_CHUNK_SIZE / 64) + 10, `Copy reread source chunks: ${copyReads} reads`);
+  if (packHistory && Math.floor(Math.ceil(count / MESSAGE_CHUNK_SIZE) / 16) >= 4) {
+    assert.ok(copyReads < Math.ceil(count / MESSAGE_CHUNK_SIZE / 4), `Packed copy reread too many files: ${copyReads}`);
+    assert.ok(stats.writes - copyBefore.writes < Math.ceil(count / MESSAGE_CHUNK_SIZE / 4), 'Packed copy wrote too many files.');
+  }
+  assert.ok(copyReads <= Math.ceil(count / MESSAGE_CHUNK_SIZE) + Math.ceil(count / MESSAGE_CHUNK_SIZE / 16) + 2 * Math.ceil(count / MESSAGE_CHUNK_SIZE / 64) + 10, `Copy used too many file reads: ${copyReads}`);
   console.log(`  Copy I/O: ${stats.lookups - copyBefore.lookups} lookups, ${copyReads} reads, ${stats.writes - copyBefore.writes} writes`);
-  console.log(`Verified ${(bytes / 1048576).toFixed(1)} MiB across ${count} messages and ${Math.ceil(count / MESSAGE_CHUNK_SIZE)} chunks.`);
+  await store.updateSessions('home', () => [meta]);
+  await store.updateSessions('copy', () => [copy]);
+  const cleanupWarning = await elapsed('Move conversation and remove source files', () => store.removeMovedSource(meta, copy));
+  assert.equal(cleanupWarning, null);
+  assert.deepEqual(await store.sessions('home'), []);
+  assert.deepEqual(await store.sessions('copy'), [copy]);
+  await assert.rejects(stat(path.join(directory, root)), { code: 'ENOENT' });
+  const moved = new HarnessStore('stress-workspace', folder);
+  assert.equal((await moved.messages(copy, 0, 1))[0].seq, 0);
+  assert.equal((await moved.messages(copy, count - 1, count))[0].seq, count - 1);
+  assert.equal((await moved.searchMessages(copy, 'ancient_unique_marker', 1))[0].seq, 12);
+  console.log('  Move verified: source folder removed; destination history and oldest search remain readable after reopen.');
+  console.log(`Verified ${(bytes / 1048576).toFixed(1)} MiB across ${count} messages, ${Math.ceil(count / MESSAGE_CHUNK_SIZE)} chunks, and ${Math.floor((count - 1) / 100) + 1} synthetic days.`);
 } finally { await rm(directory, { recursive: true, force: true }); }

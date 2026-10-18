@@ -64,6 +64,16 @@ export function usefulCompactionSummary(text: string): boolean {
   return text.trim().length >= 40 && !/^(?:new|none|n\/a|conversation summary|summary|part\s*\d+)\.?$/i.test(text.trim());
 }
 
+/** A long, multi-topic exchange should not collapse into a boilerplate status shared by every message. */
+export function summaryHasSourceDetail(summary: string, messages: HarnessMessage[]): boolean {
+  if (messages.length < 12) return true;
+  const words = (text: string) => [...text.toLowerCase().matchAll(/\b[a-z][a-z0-9_-]{3,}\b/g)].map(match => match[0]);
+  const frequency = new Map<string, number>();
+  for (const message of messages) for (const word of new Set(words(message.content))) frequency.set(word, (frequency.get(word) || 0) + 1);
+  const details = new Set([...frequency].filter(([, count]) => count <= Math.max(2, Math.floor(messages.length * .35))).map(([word]) => word));
+  return !details.size || words(summary).some(word => details.has(word));
+}
+
 /** Carry a few explicit user constraints independently of a small model's summary. */
 export function userConstraintAnchors(messages: HarnessMessage[], limit = 260): string {
   const candidates = messages.filter(message => message.role === 'user').flatMap(message =>

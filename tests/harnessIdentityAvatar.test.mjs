@@ -35,6 +35,8 @@ test('private identity drafts choose distinct icons and unique names', () => {
   assert.equal(draft.icon, 'robot');
   assert.equal(draft.createdAt, draft.updatedAt);
   assert.match(identityAvatarPrompt(draft), /fictional software builder named Vega 3/);
+  assert.match(identityAvatarPrompt(draft), /expressive robot head/);
+  assert.match(identityAvatarPrompt({ ...draft, icon: 'shield' }), /protective shield emblem/);
 });
 
 test('avatar PNG stays in the folder and can be read from a reopened workspace', async () => {
@@ -55,4 +57,18 @@ test('avatar storage rejects paths, wrong formats, and oversize files', async ()
   await assert.rejects(store.saveIdentityAvatar('../private', new Blob(['x'], { type: 'image/png' })), /identifier/);
   await assert.rejects(store.saveIdentityAvatar('private', new Blob(['x'], { type: 'image/jpeg' })), /PNG/);
   await assert.rejects(store.saveIdentityAvatar('private', new Blob([new Uint8Array(512_001)], { type: 'image/png' })), /500 KB/);
+});
+
+test('saved avatar assets are reusable across identities and keep searchable tags', async () => {
+  const folder = new MemoryDirectory();
+  const store = new HarnessStore('avatars', folder);
+  const image = new Blob([new Uint8Array([137, 80, 78, 71, 1, 2, 3])], { type: 'image/png' });
+  const asset = await store.saveAvatarAsset(image, { title: 'Robot guide', source: 'generated', tags: ['robot', 'cyberpunk'], originIdentityId: 'ada', prompt: 'A luminous robot guide' });
+  assert.deepEqual(asset.tags, ['Robot', 'Cyberpunk']);
+  const reopened = new HarnessStore('avatars', folder);
+  assert.equal((await reopened.avatarLibrary())[0].id, asset.id);
+  assert.deepEqual(new Uint8Array(await (await reopened.avatarAsset(asset.id)).arrayBuffer()), new Uint8Array(await image.arrayBuffer()));
+  await reopened.updateAvatarAsset(asset.id, 'Night guide', ['teal', 'robot']);
+  assert.equal((await store.avatarLibrary())[0].title, 'Night guide');
+  await assert.rejects(reopened.updateAvatarAsset('missing', 'No', []), /no longer/);
 });

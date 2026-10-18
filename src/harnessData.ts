@@ -99,6 +99,8 @@ export type MemoryRecord = {
   ownerId: string;
   title: string;
   content: string;
+  /** Broad, user-defined topic. Older memories without one belong to General. */
+  category?: string;
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -167,6 +169,7 @@ export type HarnessManifest = {
   agents: HarnessAgent[];
   identities: HarnessIdentity[];
   chatIdentityId: string;
+  userProfile?: { name: string; avatarAssetId?: string };
   modelPreferences: ModelPreferences;
   /** Model and agent tools may read, but not change, this workspace. Person-initiated edits remain available. */
   workspaceToolAccess?: 'full' | 'read-only';
@@ -201,7 +204,7 @@ export function createManifest(id = DEFAULT_WORKSPACE_ID, name = 'My workspace')
   return {
     version: 1, id, name, createdAt, updatedAt: createdAt,
     projects: [{ id: DEFAULT_PROJECT_ID, name: 'Home', description: 'Conversations outside a project.', instructions: '', createdAt, updatedAt: createdAt }],
-    agents: [], identities: defaultIdentities(createdAt), chatIdentityId: 'ada', toolProfiles: [], workspaceToolAccess: 'full',
+    agents: [], identities: defaultIdentities(createdAt), chatIdentityId: 'ada', userProfile: { name: 'You' }, toolProfiles: [], workspaceToolAccess: 'full',
     modelPreferences: { chat: [], code: [], image: [], speech: [], transcription: [] },
   };
 }

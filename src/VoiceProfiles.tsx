@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import HarnessSurfaceArtwork, { SurfaceArtworkButton } from './HarnessSurfaceArtwork.tsx';
+import { emptySurfaceArtwork, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
+import type { HarnessStore } from './harnessStore.ts';
+import type { ImageConfig } from './imageGeneration.ts';
 import { SPEECH_MODELS, type SpeechModelId } from './speechManifest.ts';
 import { readVoiceSample, listVoiceSamples, saveVoiceSample, updateVoiceSample, VOICE_PASSAGES, type VoiceSample, type VoiceSampleDetails } from './voiceSamples.ts';
 import { ensureWritableFolder } from './storage.ts';
@@ -32,7 +36,12 @@ async function audioDuration(blob: Blob): Promise<number | undefined> {
   } finally { URL.revokeObjectURL(url); }
 }
 
-export default function VoiceProfiles({ folder }: { folder: FileSystemDirectoryHandle | null }) {
+export default function VoiceProfiles({ folder, store, imageOptions = [], onWrite }: {
+  folder: FileSystemDirectoryHandle | null;
+  store?: HarnessStore;
+  imageOptions?: ImageConfig[];
+  onWrite?: <T,>(action: () => Promise<T>) => Promise<T>;
+}) {
   const [samples, setSamples] = useState<VoiceSample[]>([]);
   const [metrics, setMetrics] = useState<Record<string, { bytes: number; seconds?: number }>>({});
   const [editing, setEditing] = useState<VoiceSample | null>(null);
@@ -47,11 +56,14 @@ export default function VoiceProfiles({ folder }: { folder: FileSystemDirectoryH
   const [playingId, setPlayingId] = useState('');
   const [paused, setPaused] = useState(false);
   const [playProgress, setPlayProgress] = useState(0);
+  const [surfaceMap, setSurfaceMap] = useState<SurfaceArtworkMap>(emptySurfaceArtwork);
+  const [artworkVoice, setArtworkVoice] = useState<VoiceSample | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const recorder = useRef<{ media: MediaRecorder; stream: MediaStream; timer: number; start: number; discard: boolean } | null>(null);
   const playback = useRef<HTMLAudioElement | null>(null);
   const playbackUrl = useRef('');
   const playRequest = useRef(0);
+  useEffect(() => { if (!store) return; let active = true; void store.surfaceArtwork().then(value => { if (active) setSurfaceMap(value); }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }); return () => { active = false; }; }, [store]);
 
   useEffect(() => {
     let current = true;
@@ -196,7 +208,7 @@ export default function VoiceProfiles({ folder }: { folder: FileSystemDirectoryH
       {samples.map(sample => {
         const isPlaying = playingId === sample.id;
         const data = metrics[sample.id];
-        return <tr key={sample.id}><td><strong>{sample.name}</strong></td><td>{SPEECH_MODELS.find(model => model.id === sample.language)?.language || sample.language}</td><td>{sample.version || '—'}</td><td>{sample.company || '—'}</td><td>{sample.license || '—'}</td><td>{formatDuration(sample.durationSeconds ?? data?.seconds)}</td><td>{formatSize(sample.fileBytes ?? data?.bytes)}</td><td><button className={`voice-play-button${isPlaying && !paused ? ' playing' : ''}`} type="button" title={isPlaying && !paused ? 'Pause voice' : 'Play voice'} aria-label={`${isPlaying && !paused ? 'Pause' : 'Play'} ${sample.name}`} style={{ '--voice-play-progress': `${Math.max(0, Math.min(1, isPlaying ? playProgress : 0)) * 100}%` } as React.CSSProperties} onClick={() => void play(sample)}>{isPlaying && !paused ? '⏸' : '▶'}</button></td><td><button className="button secondary compact" type="button" onClick={() => openEditor(sample)}>Edit</button></td></tr>;
+        return <tr key={sample.id}><td className="model-catalog-name">{store && onWrite && <SurfaceArtworkButton store={store} title={sample.name} assetId={surfaceMap.items[`voice:${sample.id}`]?.assetId} onOpen={() => setArtworkVoice(sample)}/>}<strong>{sample.name}</strong></td><td>{SPEECH_MODELS.find(model => model.id === sample.language)?.language || sample.language}</td><td>{sample.version || '—'}</td><td>{sample.company || '—'}</td><td>{sample.license || '—'}</td><td>{formatDuration(sample.durationSeconds ?? data?.seconds)}</td><td>{formatSize(sample.fileBytes ?? data?.bytes)}</td><td><button className={`voice-play-button${isPlaying && !paused ? ' playing' : ''}`} type="button" title={isPlaying && !paused ? 'Pause voice' : 'Play voice'} aria-label={`${isPlaying && !paused ? 'Pause' : 'Play'} ${sample.name}`} style={{ '--voice-play-progress': `${Math.max(0, Math.min(1, isPlaying ? playProgress : 0)) * 100}%` } as React.CSSProperties} onClick={() => void play(sample)}>{isPlaying && !paused ? '⏸' : '▶'}</button></td><td><button className="button secondary compact" type="button" onClick={() => openEditor(sample)}>Edit</button></td></tr>;
       })}
       {!samples.length && <tr><td colSpan={9} className="voice-empty">{folder ? 'No voices saved yet.' : 'Connect a project folder to save voices.'}</td></tr>}
     </tbody></table></div>
@@ -213,5 +225,6 @@ export default function VoiceProfiles({ folder }: { folder: FileSystemDirectoryH
       {error && <p className="model-error" role="alert">{error}</p>}
       <div className="voice-editor-footer"><button className="button secondary compact" type="button" disabled={busy} onClick={closeEditor}>Cancel</button><button className="button primary compact" type="button" disabled={busy || recording} onClick={() => void save()}>{busy ? 'Saving…' : 'Save voice'}</button></div>
     </dialog>
+    {artworkVoice && store && onWrite && <HarnessSurfaceArtwork key={artworkVoice.id} store={store} surfaceKey={`voice:${artworkVoice.id}`} title={artworkVoice.name} kind="voice profile" entry={surfaceMap.items[`voice:${artworkVoice.id}`]} imageOptions={imageOptions} folder={folder} onWrite={onWrite} onSaved={setSurfaceMap} onClose={() => setArtworkVoice(null)}/>}
   </section>;
 }

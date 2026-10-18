@@ -42,6 +42,7 @@ test('diagnostic stream reports prompt and output progress and preserves final u
   assert.equal(response.choices[0].message.content, '5 minutes');
   assert.equal(response.choices[0].finish_reason, 'stop');
   assert.equal(response.usage.total_tokens, 15);
+  assert.equal(response.usage.prompt_tokens_details.cached_tokens, 4);
 });
 
 test('diagnostic stream retains a structured tool call across chunks', async () => {
@@ -55,6 +56,19 @@ test('diagnostic stream retains a structured tool call across chunks', async () 
   assert.equal(updates.at(-1).visibleText, '');
   assert.equal(response.choices[0].finish_reason, 'tool_calls');
   assert.deepEqual(response.choices[0].message.tool_calls, [{ id: 'call-1', type: 'function', function: { name: 'count_letters', arguments: '{"word":"apple"}' } }]);
+});
+
+test('diagnostic stream distinguishes a measured cold prompt from unknown cache reuse', async () => {
+  async function* cold() {
+    yield { id: 'cold', created: 1, model: 'test', prompt_progress: { total: 5, cache: 0, processed: 5, time_ms: 1 }, choices: [] };
+  }
+  async function* unknown() {
+    yield { id: 'unknown', created: 1, model: 'test', choices: [{ index: 0, delta: { content: 'ready' }, finish_reason: 'stop' }] };
+  }
+  const coldResponse = await collectProbeStream(cold(), 32, () => {});
+  const unknownResponse = await collectProbeStream(unknown(), 32, () => {});
+  assert.equal(coldResponse.usage.prompt_tokens_details.cached_tokens, 0);
+  assert.equal(unknownResponse.usage.prompt_tokens_details, undefined);
 });
 
 test('diagnostic stream retains separate reasoning deltas and counts their progress', async () => {

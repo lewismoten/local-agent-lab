@@ -7,6 +7,7 @@ import qwen25License from './licenses/qwen25License.ts';
 import qwenResearchLicense from './licenses/qwenResearchLicense.ts';
 import gemmaTerms from './licenses/gemmaTerms.ts';
 import gemmaPolicy from './licenses/gemmaPolicy.ts';
+import sparkXLicense from './licenses/sparkXLicense.ts';
 import { modelFolderName } from './modelFolders.ts';
 
 type LicenseFile = { suffix: string; content: string; type: string };
@@ -19,7 +20,8 @@ const bonsai2Notice = (size: '2B' | '4B' | '9B') =>
   `This software is copyright 2026-present Prism ML, Inc. It is available under the Apache 2.0 license.\nIf you publicly deploy or redistribute this software, we would appreciate attribution such as: "Created using Bonsai by Prism ML."\n\nThis software is built from Qwen3.5-${size}, Copyright 2026 Alibaba Cloud, which is available under the Apache 2.0 License: https://huggingface.co/Qwen/Qwen3.5-${size}/blob/main/LICENSE\n${size === '2B' ? '' : `The DFlash draft model is built from z-lab/Qwen3.5-${size}-DFlash, Copyright 2026 Z Lab and Modal, which is available under the Apache 2.0 License: https://huggingface.co/z-lab/Qwen3.5-${size}-DFlash\n`}`;
 
 function filesFor(model: CatalogModel): LicenseFile[] {
-  const license = model.id === 'qwen35-2b' ? qwen35License
+  const license = model.id === 'spark-x25-17b' ? sparkXLicense
+    : model.id === 'qwen35-2b' ? qwen35License
     : model.id === 'qwen3-17b' ? qwen3License
     : model.id === 'qwen25-15b' ? qwen25License
     : model.id === 'qwen25-3b' ? qwenResearchLicense : apache2License;

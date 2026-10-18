@@ -10,7 +10,7 @@ import { browserTaskTools } from './harnessTaskTools.ts';
 import { browserAgentTools } from './harnessAgentTools.ts';
 import { browserJournalTools, journalEnabledReview } from './harnessJournalTools.ts';
 import { browserTopicTools } from './harnessTopicTools.ts';
-import { browserModelCatalogTools, engineDownloadReview, modelDownloadReview, modelDownloadSpeedReview } from './harnessModelTools.ts';
+import { browserModelCatalogTools, engineDownloadReview, modelDownloadQueueReview, modelDownloadReview, modelDownloadSpeedReview } from './harnessModelTools.ts';
 import { browserModelPreferenceTools, modelPreferenceReview } from './harnessPreferenceTools.ts';
 import type { ConversationMeta } from './harnessData.ts';
 import type { HarnessStore } from './harnessStore.ts';
@@ -168,7 +168,7 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
       await assertCurrentWorkspaceToolAccess(name, scope, args.history?.store);
       const shellCommand = name === 'shell_readonly' ? parseReadOnlyShell(String(toolArgs.command || '')) : null;
       const approvalProject = toolArgs.area === 'workspace' && !name.startsWith('git_') ? scope.defaultProjectId : String(toolArgs.project || scope.defaultProjectId);
-      const approvalArgs = name === 'queue_model_download' ? modelDownloadReview(toolArgs.id) : name === 'queue_browser_engine' ? engineDownloadReview(toolArgs.engine) : name === 'set_model_download_speed' ? modelDownloadSpeedReview(toolArgs.speedMiBps) : name === 'set_model_preferences' && args.history ? await modelPreferenceReview(args.history.store, toolArgs.purpose, toolArgs.ids) : name === 'set_journal_enabled' && args.history ? await journalEnabledReview(args.history.store, toolArgs.enabled) : toolArgs;
+      const approvalArgs = name === 'queue_model_download' ? modelDownloadReview(toolArgs.id) : name === 'queue_browser_engine' ? engineDownloadReview(toolArgs.engine) : name === 'set_model_download_speed' ? modelDownloadSpeedReview(toolArgs.speedMiBps) : name === 'pause_model_queue' || name === 'resume_model_queue' ? await modelDownloadQueueReview(folder, name === 'pause_model_queue' ? 'pause' : 'resume') : name === 'set_model_preferences' && args.history ? await modelPreferenceReview(args.history.store, toolArgs.purpose, toolArgs.ids) : name === 'set_journal_enabled' && args.history ? await journalEnabledReview(args.history.store, toolArgs.enabled) : toolArgs;
       await authorizeToolCall({ scope, name, arguments: approvalArgs, projectId: approvalProject, sessionKey: args.approvalSessionKey || '', runGrants, approve: args.onToolApproval, signal });
       if (shellCommand) await authorizeToolCall({ scope, name: shellCommandPermission(shellCommand.name), arguments: toolArgs, projectId: scope.defaultProjectId, sessionKey: args.approvalSessionKey || '', runGrants, approve: args.onToolApproval, signal });
       await assertCurrentWorkspaceToolAccess(name, scope, args.history?.store);
@@ -250,8 +250,8 @@ async function runHarnessCompletion(args: HarnessCompletionArgs, plan: ToolPlan)
           if (!topicTools) throw new Error('Topic tools are unavailable.');
           return await topicTools.execute(name, toolArgs);
         }
-        if (['search_model_catalog', 'get_model_download_status', 'queue_model_download', 'queue_browser_engine', 'set_model_download_speed'].includes(name)) {
-          const result = await modelTools.execute(name, toolArgs);
+        if (['search_model_catalog', 'get_model_download_status', 'queue_model_download', 'queue_browser_engine', 'set_model_download_speed', 'pause_model_queue', 'resume_model_queue'].includes(name)) {
+          const result = await modelTools.execute(name, name === 'pause_model_queue' || name === 'resume_model_queue' ? { ...toolArgs, __reviewedQueue: approvalArgs } : toolArgs);
           if (isMutatingToolName(name)) completedChanges.push(`${name}: ${result.slice(0, 500)}`);
           return result;
         }

@@ -1,0 +1,16 @@
+.model-catalog-name .harness-surface-artwork-button { display: inline-grid; flex: none; place-items: center; width: 25px; height: 25px; padding: 0; overflow: hidden; border: 1px solid #548b9b; border-radius: 6px; color: #8df2e8; background: #173246; vertical-align: middle; box-shadow: 0 0 12px #60ecde20; }
+.model-catalog-name .harness-surface-artwork-button:hover { border-color: #a1fff1; color: #fff; box-shadow: 0 0 17px #60ecde70; }
+.harness-surface-artwork-button img { width: 100%; height: 100%; object-fit: cover; }
+.model-catalog-name .harness-surface-artwork-button + strong { display: inline; margin-left: 7px; vertical-align: middle; }
+.harness-surface-artwork-dialog { width: min(700px, calc(100vw - 24px)); max-height: min(88dvh, 860px); overflow-y: auto; }
+.harness-surface-artwork-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.harness-surface-artwork-head h2 { margin: 0; }
+.harness-surface-artwork-preview { display: grid; place-items: center; width: 78px; height: 78px; margin: 13px 0; overflow: hidden; border: 1px solid #68abb1; border-radius: 12px 4px 12px 4px; color: #91f7e9; background: #1a3449; }
+.harness-surface-artwork-preview img { width: 100%; height: 100%; object-fit: cover; }
+.harness-surface-artwork-dialog label { display: grid; gap: 6px; }
+.harness-surface-artwork-dialog label textarea { width: 100%; resize: vertical; }
+.harness-surface-artwork-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 11px 0; }
+.harness-surface-artwork-dialog details { padding: 10px 0; border-top: 1px solid #496d82; }
+.harness-surface-artwork-dialog details summary { color: #9cf3e8; cursor: pointer; }
+.harness-surface-artwork-dialog details > input { width: min(100%, 360px); margin: 10px 0; }
+.harness-surface-artwork-dialog > [role=status] { display: block; min-height: 1.5em; color: #b3cfdd; font-size: 11px; }

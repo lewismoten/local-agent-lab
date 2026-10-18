@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 const site = new URL(process.argv[2] || 'https://lewismoten.github.io/local-agent-lab/');
 if (!site.pathname.endsWith('/')) site.pathname += '/';
 const root = site.href;
@@ -42,3 +44,6 @@ await Promise.all(Array.from({ length: 12 }, async () => {
 }));
 if (failures.length) throw new Error(`Published assets missing:\n${failures.join('\n')}`);
 console.log(`Published Pages audit: ${root} build ${version}; ${paths.length} cached files reachable, ${index.packages.length} package notices complete, no optional weights bundled.`);
+const localWorker = await readFile(new URL('../dist/coi-serviceworker.js', import.meta.url), 'utf8').catch(() => '');
+const localVersion = localWorker.match(/const BUILD_VERSION = \/\* BUILD_VERSION \*\/ '([a-f0-9]{16})';/)?.[1];
+if (localVersion && localVersion !== version) console.log(`Published build differs from local dist (${localVersion}); recheck after deployment.`);

@@ -171,6 +171,14 @@ export async function recordFrames(frames: ImageData[], fps: number, onFrame?: (
       onFrame?.(i + 1);
       await new Promise(resolve => setTimeout(resolve, 1000 / fps));
     }
+    // MediaRecorder can omit the last requested canvas frame until it sees one
+    // more changed frame. A one-pixel tail flushes the real ending into WebM.
+    if (signal?.aborted) throw signal.reason;
+    const corner = context.getImageData(canvas.width - 1, canvas.height - 1, 1, 1).data;
+    context.fillStyle = corner[0] + corner[1] + corner[2] > 382 ? '#000' : '#fff';
+    context.fillRect(canvas.width - 1, canvas.height - 1, 1, 1);
+    track.requestFrame?.();
+    await new Promise(resolve => setTimeout(resolve, 1000 / fps));
     recorder.stop();
     return await finished;
   } finally { if (recorder.state !== 'inactive') recorder.stop(); stream.getTracks().forEach(track => track.stop()); }

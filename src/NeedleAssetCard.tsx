@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useConfirmDialog } from './ConfirmDialog';
 import { getNeedleAssets, NEEDLE_ENGINE_ASSETS, NEEDLE_LABELS, NEEDLE_MODEL_ASSETS, needleAssetsManager, subscribeNeedleAssets } from './needleAssets';
 import { unloadNeedle } from './needleRuntime';
@@ -9,7 +9,7 @@ import { NEEDLE_CATALOG, NEEDLE_DETAILS, type NeedleAssetGroup } from './needleC
 
 type Group = NeedleAssetGroup;
 
-export default function NeedleAssetCard({ folder, group, inTable = false, onDetails, disabled = false }: { folder: FileSystemDirectoryHandle | null; group: Group; inTable?: boolean; onDetails?: () => void; disabled?: boolean }) {
+export default function NeedleAssetCard({ folder, group, inTable = false, onDetails, artworkControl, disabled = false }: { folder: FileSystemDirectoryHandle | null; group: Group; inTable?: boolean; onDetails?: () => void; artworkControl?: ReactNode; disabled?: boolean }) {
   const state = useSyncExternalStore(subscribeNeedleAssets, getNeedleAssets);
   const ledger = useSyncExternalStore(subscribeCapabilityLedger, getCapabilityLedger);
   const confirmAction = useConfirmDialog();
@@ -57,7 +57,7 @@ export default function NeedleAssetCard({ folder, group, inTable = false, onDeta
   </div>;
   if (inTable && group === 'engine') {
     const status = checking ? 'Checking files…' : active ? `${(state.currentBytes / total * 100).toFixed(1)}%` : queued ? state.queuePaused ? state.errorGroup === group ? 'Needs retry' : 'Paused' : `Queued #${queueIndex + 1}` : saved && !installed ? 'Needs repair' : '';
-    return <tbody><tr><td className="model-catalog-name"><strong>Needle</strong></td><td>Geekgineer</td><td>0.3.1</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href="https://cdn.jsdelivr.net/npm/needle-rs@0.3.1/LICENSE" target="_blank" rel="noreferrer">MIT</a></td><td>{controls}</td></tr>
+    return <tbody><tr><td className="model-catalog-name">{artworkControl}<strong>Needle</strong></td><td>Geekgineer</td><td>0.3.1</td><td>{(total / 1e6).toFixed(1)} MB</td><td><a href="https://cdn.jsdelivr.net/npm/needle-rs@0.3.1/LICENSE" target="_blank" rel="noreferrer">MIT</a></td><td>{controls}</td></tr>
       <tr className="model-catalog-detail"><td colSpan={6}><div className="model-catalog-detail-content"><span className="model-catalog-detail-text">Needle 1–3 tool routing · 1K–8K context by model. <a href={item.source} target="_blank" rel="noreferrer">Source</a>{!checking && !installed && state.verification.engine && <span title={state.verification.engine}> · ⚠️ {state.verification.engine}</span>}</span><span className="model-catalog-detail-state">{status && <span>{status}</span>}{active && <progress value={state.currentBytes} max={total} aria-label="Needle engine download progress"/>}</span></div>{(error || state.folder === folder && state.errorGroup === group) && <p className="model-error" role="alert">{error || state.error}</p>}</td></tr></tbody>;
   }
   if (inTable && group !== 'engine') {
@@ -65,7 +65,7 @@ export default function NeedleAssetCard({ folder, group, inTable = false, onDeta
     const path = NEEDLE_MODEL_PATHS[group];
     const status = checking ? 'Checking files…' : active ? `${(state.currentBytes / total * 100).toFixed(1)}%` : queued ? state.queuePaused ? queueIndex === 0 ? state.errorGroup === group ? 'Needs retry' : 'Paused' : 'Queued · paused' : `Queued #${queueIndex + 1}` : saved && !installed ? state.present[group] ? 'Needs repair' : `${(saved / total * 100).toFixed(1)}% saved` : '';
     return <tbody className="needle-model-rows"><tr>
-      <td className="model-catalog-name"><strong>{item.label}</strong></td>
+      <td className="model-catalog-name">{artworkControl}<strong>{item.label}</strong></td>
       <td className="model-catalog-control"><div className="model-catalog-control-line">{controls}</div></td>
       <td>{model.version}</td><td>{Math.round(model.parameters * 1000)}M</td><td>{(model.bytes / 1e6).toFixed(1)} MB</td><td>{Math.round(model.contextTokens / 1024)}K</td>
       <td className="model-catalog-capabilities"><span className="capability-icons" aria-label="Recorded browser capabilities">{capabilityBadges(ledger, path, NEEDLE_MODEL_ASSETS[group][1].bytes).map(badge => <span className="capability-icon" key={badge.id} role="img" tabIndex={0} data-tooltip={badge.title} aria-label={badge.title}>{badge.icon}</span>)}{onDetails && <button className="capability-info-button" type="button" title={`Details for ${item.label}`} aria-label={`Details for ${item.label}`} onClick={onDetails}>ⓘ</button>}{pendingCapabilities(ledger, path, undefined, NEEDLE_MODEL_ASSETS[group][1].bytes).length > 0 && <button className="capability-test-button" type="button" disabled={!folder || !installed || !state.installed.engine} title="Load this tool model and run its browser tests" aria-label={`Test ${item.label}`} onClick={() => { sessionStorage.setItem('needle-selected-model', group); window.dispatchEvent(new CustomEvent('open-browser-tool-models', { detail: group })); }}>🧪</button>}</span></td>

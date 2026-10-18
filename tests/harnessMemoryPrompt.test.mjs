@@ -27,6 +27,16 @@ test('unused space from short memories goes to a longer relevant memory', () => 
   assert.ok((text.match(/B/g) || []).length > 130);
 });
 
+test('category helps find and label a memory without changing older notes', () => {
+  const records = [
+    { id: 'person', scope: 'global', ownerId: '', category: 'About Me', title: 'Home city', content: 'Lives in Boston.', tags: [], updatedAt: '2026-01-02' },
+    { id: 'code', scope: 'global', ownerId: '', title: 'Project setup', content: 'Uses TypeScript.', tags: [], updatedAt: '2026-01-01' },
+  ];
+  assert.equal(relatedMemory(records, 'home', 'session', 'about me')[0]?.id, 'person');
+  assert.match(memoryPromptExcerpt(records, 240), /\[global \/ About Me: Home city\]/);
+  assert.match(memoryPromptExcerpt(records, 240), /\[global: Project setup\]/);
+});
+
 test('retrieval keeps useful project and session memories when many global memories match', () => {
   const record = (id, scope, ownerId, title, content) => ({ id, scope, ownerId, title, content, tags: [], updatedAt: `2026-01-${String(Number(id.slice(1)) + 1).padStart(2, '0')}T00:00:00Z` });
   const records = Array.from({ length: 7 }, (_, index) => record(`g${index}`, 'global', '', 'Coding', 'Coding preference'));

@@ -29,6 +29,14 @@ export function imageConfigured(config: ImageConfig) {
   return config.preset !== 'none' && (config.provider === 'browser' || !!config.endpoint.trim() && !!config.model.trim() && (config.provider !== 'openai' || !!config.apiKey));
 }
 
+type ImageGeneratedRecorder = () => Promise<void>;
+const imageRecorderHost = globalThis as typeof globalThis & { __localAgentLabImageRecorder?: ImageGeneratedRecorder };
+/** The active harness captures its workspace before an image request begins. */
+export function setImageGeneratedRecorder(recorder: ImageGeneratedRecorder | null): () => void {
+  imageRecorderHost.__localAgentLabImageRecorder = recorder || undefined;
+  return () => { if (imageRecorderHost.__localAgentLabImageRecorder === recorder) imageRecorderHost.__localAgentLabImageRecorder = undefined; };
+}
+
 function imageBlobFromBase64(encoded: string): Blob {
   const binary = atob(encoded);
   const bytes = new Uint8Array(binary.length);
@@ -37,6 +45,13 @@ function imageBlobFromBase64(encoded: string): Blob {
 }
 
 export async function generateImage(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void, workspace?: FileSystemDirectoryHandle | null, onStep?: (step: number, totalSteps: number) => void, seed?: number): Promise<Blob> {
+  const recorder = imageRecorderHost.__localAgentLabImageRecorder;
+  const result = await generateImageImpl(config, prompt, signal, onProgress, onPreview, workspace, onStep, seed);
+  if (recorder) void recorder().catch(error => console.warn('Image generated; achievement progress will update when Achievements opens:', error));
+  return result;
+}
+
+async function generateImageImpl(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void, workspace?: FileSystemDirectoryHandle | null, onStep?: (step: number, totalSteps: number) => void, seed?: number): Promise<Blob> {
   if (!imageConfigured(config)) throw new Error('Choose an image generator in AI profiles first.');
   if (config.provider === 'browser') {
     const group: BrowserImageModelGroup = config.preset === 'browser-tiny-q4' ? 'tiny-q4' : config.preset === 'browser-tiny-fp16' ? 'tiny-fp16' : config.preset === 'browser-sdxs' ? 'sdxs' : config.preset === 'browser-lcm' ? 'lcm' : config.preset === 'browser-supra-mobile' ? 'supra-mobile' : 'model';

@@ -22,6 +22,7 @@ test('memory lookup returns only global, allowed-project, and current-session no
   assert.deepEqual(result.matches.map(item => item.id), ['project', 'session']);
   assert.equal(result.matches[0].moreContent, true);
   assert.ok(result.matches[0].excerpt.length <= 360);
+  assert.equal(result.matches[0].category, 'General');
   await assert.rejects(tools.execute('read_memory', { id: 'other' }), /allowed scope/);
   await assert.rejects(tools.execute('read_memory', { id: 'old-session' }), /allowed scope/);
   await assert.rejects(tools.execute('search_memory', { project: 'secret', query: 'search' }), /outside the agent/);
@@ -47,9 +48,9 @@ test('small contexts expose memory lookup for memory questions without carrying 
 test('a model can propose a memory draft without writing to saved memory', async () => {
   let reads = 0;
   const tools = browserMemoryTools({ memory: async () => { reads++; return records; } }, meta, scope);
-  const result = await tools.execute('propose_memory', { title: 'Editor preference', content: 'Prefer short diffs.', scope: 'project', tags: 'Coding, Workflow' });
+  const result = await tools.execute('propose_memory', { title: 'Editor preference', content: 'Prefer short diffs.', scope: 'project', category: 'Preferences', tags: 'Coding, Workflow' });
   const draft = memoryDraftFromToolEvent(`memory_draft: ${result}`);
-  assert.deepEqual(draft, { title: 'Editor preference', content: 'Prefer short diffs.', scope: 'project', tags: 'Coding, Workflow' });
+  assert.deepEqual(draft, { title: 'Editor preference', content: 'Prefer short diffs.', scope: 'project', category: 'Preferences', tags: 'Coding, Workflow' });
   assert.equal(reads, 0);
   assert.equal(memoryDraftFromToolEvent('propose_memory: queued'), null);
   assert.equal(memoryDraftFromToolEvent('memory_draft: {bad json}'), null);

@@ -137,6 +137,18 @@ test('Bonsai 2 browser GGUF saves the matching license and Qwen3.5 notice', asyn
   assert.equal(serverModel.name, 'Ternary-Bonsai-2-2B-Q2_0.gguf');
   assert.equal(serverModel.runtime, 'local-server');
 });
+test('Spark-X saves the publisher copyright notice and rejects an older generic sidecar', async () => {
+  const model = MODEL_CATALOG.find(item => item.id === 'spark-x25-17b');
+  const folder = new MemoryDirectory();
+  await ensureModelLicenseFiles(folder, model.url);
+  const license = new TextDecoder().decode(sidecarBytes(folder, model, 'LICENSE.txt'));
+  assert.match(license, /Copyright 2026 XHToken Authors/);
+  await assertModelLicenseFiles(folder, `models/${model.name}`);
+  folder.directories.get(modelFolderName(model.name)).files.set('LICENSE.txt', new TextEncoder().encode('Apache License\nVersion 2.0'));
+  await assert.rejects(assertModelLicenseFiles(folder, `models/${model.name}`), /license.*changed|license.*missing/i);
+  await ensureModelLicenseFiles(folder, model.url);
+  await assertModelLicenseFiles(folder, `models/${model.name}`);
+});
 test('Bonsai 2 browser catalog includes the supported packs below 2 GB with matching notices', async () => {
   const variants = [
     ['bonsai2-2b-pq2', 517312992, '2B'],

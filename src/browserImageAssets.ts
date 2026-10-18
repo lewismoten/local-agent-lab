@@ -46,6 +46,7 @@ const BROWSER_IMAGE_PREVIOUS_ENGINE_ASSETS: readonly Asset[] = [
 export const imageModelAcceptsPreviousEngine = (group: BrowserImageModelGroup) => group === 'model' || group === 'tiny-q4' || group === 'tiny-fp16' || group === 'sdxs';
 export const BROWSER_IMAGE_MODEL_ASSETS: readonly Asset[] = [
   { name: 'LICENSE.txt', url: 'https://raw.githubusercontent.com/CompVis/stable-diffusion/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/LICENSE', bytes: 14385, sha256: 'be351ebe7ac01bcdbb018639aadcfd38f136b7dc3f2a3d4d3a24db51d1b210ef', label: 'CreativeML Open RAIL-M license' },
+  { name: 'Text_Encoder_LICENSE.txt', url: model('Text_Encoder_LICENSE.txt'), bytes: 214, sha256: '15712468f7eaa5e31bab2a2ee7445a301b7cd77e85b7a5378d38fa36a78620e6', label: 'Text encoder source and license notice' },
   { name: 'tokenizer.json', url: script('tokenizers/sd-1.5/tokenizer.json'), bytes: 2222656, sha256: '5e20ee7c61075a30c2118896987fe13d8b0f8f30a36ba0fbdb0754959c8d0bb4', label: 'CLIP tokenizer' },
   { name: 'text-encoder.onnx', url: model('text-encoder.onnx'), bytes: 246417740, sha256: '6e4d5bea3433a9455f2c7facf358477f4aea6509cb10500b9ed9def643c81579', label: 'SD 1.5 text encoder' },
   { name: 'sd-unet-v1.5-model-b2c4h64w64s77-float16-compute-and-inputs-layernorm.onnx', url: model('sd-unet-v1.5-model-b2c4h64w64s77-float16-compute-and-inputs-layernorm.onnx'), bytes: 1719405068, sha256: 'd680d78f36f5722c0205258337e91c41e0d552d17f812cffbe4f3fb138de3c82', label: 'SD 1.5 UNet' },
@@ -100,6 +101,11 @@ export const BROWSER_SUPRA_ASSETS: readonly Asset[] = [
   supraAsset('dit.onnx', 'dit/model_int8.onnx', 106574020, 'a53f5fe8c0b51f40b8dad3013281485514b944db9f474e87302f7e5c4558acbc', 'Supra2 transformer'),
   supraAsset('vae-decoder.onnx', 'vae_decoder/model.onnx', 198078680, 'ac7fae16a6b6bd3868e45fae1fa222f812ebae82bdec1557bd2bb6fbc8b673a6', 'Supra2 VAE decoder'),
 ];
+export const browserImageLicenseLinks = (group: BrowserImageModelGroup) => group === 'sdxs'
+  ? [{ label: 'Open RAIL++-M', url: BROWSER_SDXS_ASSETS[0].url }, { label: 'DreamShaper Open RAIL-M', url: BROWSER_SDXS_ASSETS[1].url }, { label: 'TAESD MIT', url: BROWSER_SDXS_ASSETS[2].url }]
+  : group === 'supra-mobile'
+    ? [{ label: 'Apache 2.0', url: BROWSER_SUPRA_ASSETS[0].url }, { label: 'NOTICE', url: BROWSER_SUPRA_ASSETS[1].url }]
+    : [{ label: 'CreativeML Open RAIL-M', url: BROWSER_IMAGE_MODEL_ASSETS[0].url }];
 export const browserImageAssets = (group: Group): readonly Asset[] => group === 'engine' ? BROWSER_IMAGE_ENGINE_ASSETS : group === 'model' ? BROWSER_IMAGE_MODEL_ASSETS : group === 'tiny-q4' ? BROWSER_TINY_Q4_ASSETS : group === 'tiny-fp16' ? BROWSER_TINY_FP16_ASSETS : group === 'sdxs' ? BROWSER_SDXS_ASSETS : group === 'lcm' ? BROWSER_LCM_ASSETS : BROWSER_SUPRA_ASSETS;
 const assets = browserImageAssets;
 export const browserImageTotal = (group: Group) => assets(group).reduce((sum, item) => sum + item.bytes, 0);

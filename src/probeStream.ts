@@ -1,4 +1,4 @@
-import type { ChatCompletionChunk, ChatCompletionResponse, ChatCompletionToolCall } from './browserEngineTypes';
+import type { ChatCompletionChunk, ChatCompletionResponse, ChatCompletionToolCall, ChatCompletionUsage } from './browserEngineTypes';
 
 export type ProbeTokenProgress = {
   promptProcessed: number;
@@ -33,6 +33,7 @@ export async function collectProbeStream(
   let promptTotal = 0;
   let promptProcessed = 0;
   let promptCachedTokens = 0;
+  let cacheObserved = false;
   let outputTokens = 0;
   let observedOutputChunks = 0;
   let outputStartedAt = 0;
@@ -51,12 +52,14 @@ export async function collectProbeStream(
     created = chunk.created || created;
     model = chunk.model || model;
     if (chunk.prompt_progress) {
+      cacheObserved = true;
       promptTotal = chunk.prompt_progress.total;
-      promptCachedTokens = Math.max(0, chunk.prompt_progress.cache);
+      promptCachedTokens = Math.max(promptCachedTokens, chunk.prompt_progress.cache);
       promptProcessed = Math.min(promptTotal, chunk.prompt_progress.cache + chunk.prompt_progress.processed);
     }
     if (chunk.usage) {
       usage = chunk.usage;
+      if (typeof chunk.usage.prompt_tokens_details?.cached_tokens === 'number') cacheObserved = true;
       promptCachedTokens = Math.max(promptCachedTokens, chunk.usage.prompt_tokens_details?.cached_tokens || 0);
       promptProcessed = chunk.usage.prompt_tokens;
       promptTotal = Math.max(promptTotal, promptProcessed);
@@ -93,9 +96,13 @@ export async function collectProbeStream(
     onProgress({ promptProcessed, promptTotal, promptCachedTokens, outputTokens, reasoningTokens, responseTokens, maxOutputTokens, outputEstimated: !usage || observedOutputChunks > usage.completion_tokens, outputTokensPerSecond, visibleText: live.response, ...(live.reasoning ? { reasoningText: live.reasoning } : {}), ...(responseText ? { responseText } : {}) });
   }
   const toolCalls = [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call).filter(call => call.function.name);
+  const finalUsage: ChatCompletionUsage = usage || { prompt_tokens: promptProcessed, completion_tokens: outputTokens, total_tokens: promptProcessed + outputTokens };
+  if (cacheObserved && finalUsage.prompt_tokens_details?.cached_tokens === undefined) {
+    finalUsage.prompt_tokens_details = { ...finalUsage.prompt_tokens_details, cached_tokens: promptCachedTokens };
+  }
   return {
     id, object: 'chat.completion', created, model,
     choices: [{ index: 0, message: { role: 'assistant', content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}), ...(toolCalls.length ? { tool_calls: toolCalls } : {}) }, finish_reason: finishReason, logprobs: null }],
-    usage: usage || { prompt_tokens: promptProcessed, completion_tokens: outputTokens, total_tokens: promptProcessed + outputTokens },
+    usage: finalUsage,
   };
 }

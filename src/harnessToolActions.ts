@@ -4,7 +4,7 @@ const MUTATING_TOOLS = new Set([
   'move_file', 'delete_file', 'restore_backup', 'generate_image',
   'git_init', 'git_stage', 'git_unstage', 'git_commit', 'git_create_branch',
   'claim_task', 'add_task_note', 'set_task_status',
-  'queue_model_download', 'queue_browser_engine', 'set_model_download_speed', 'set_model_preferences',
+  'queue_model_download', 'queue_browser_engine', 'set_model_download_speed', 'pause_model_queue', 'resume_model_queue', 'set_model_preferences',
   'set_journal_enabled',
 ]);
 

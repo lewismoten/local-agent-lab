@@ -54,8 +54,12 @@ import { getMotionAssets, MOTION_MODELS, motionAssetsManager, motionModelForPath
 import PoseModelDiagnostics from './PoseModelDiagnostics.tsx';
 import VectorModelDiagnostics from './VectorModelDiagnostics.tsx';
 import TripoModelDiagnostics from './TripoModelDiagnostics.tsx';
+import type { HarnessStore } from './harnessStore.ts';
 
 type Props = {
+  store?: HarnessStore;
+  imageOptions?: ImageConfig[];
+  onWrite?: <T,>(action: () => Promise<T>) => Promise<T>;
   config: AIConfig; profiles: AIConfig[]; onSelect: (id: string) => void;
   onChange: (profile: AIConfig) => void; onAdd: (profile: AIConfig) => void; onDelete: (id: string) => void;
   onModelDownloaded: (profileId: string, path: string) => void;
@@ -70,7 +74,7 @@ const providers: { id: Provider; label: string }[] = [
   { id: 'anthropic', label: 'Anthropic Messages' }, { id: 'gemini', label: 'Gemini' },
 ];
 const bonsai2Model = MODEL_CATALOG.find(model => model.id === 'bonsai2-q2-server')!;
-export default function ProviderSettings({ config, profiles, onSelect, onChange, onAdd, onDelete, onModelDownloaded, onConnectFolder, folder, imageConfig, onImageConfigChange }: Props) {
+export default function ProviderSettings({ store, imageOptions, onWrite, config, profiles, onSelect, onChange, onAdd, onDelete, onModelDownloaded, onConnectFolder, folder, imageConfig, onImageConfigChange }: Props) {
   const confirmAction = useConfirmDialog();
   const limitDialogRef = useRef<HTMLDialogElement>(null);
   const modelHelpDialogRef = useRef<HTMLDialogElement>(null);
@@ -524,9 +528,9 @@ export default function ProviderSettings({ config, profiles, onSelect, onChange,
       </>}
       </div>}
       {browserTab === 'catalog' && <div role="tabpanel">
-      <ModelCatalog folder={folder} modelTypeFilter={modelTypeFilter} onModelTypeFilterChange={setModelTypeFilter} download={download} fileSizes={fileSizes} licensedModels={licensedModels} partialNames={partialNames} partialModels={partialModels} busy={permissionBusy} ledger={capabilityLedger} onRefreshCapabilities={() => { if (folder) void loadCapabilityLedger(folder, true).catch(error => setModelError(error instanceof Error ? error.message : String(error))); }} onTestImage={group => { const path = BROWSER_IMAGE_MODEL_PATHS[group]; setModelTypeFilter('image'); setBrowserTab('loaded'); selectLocalModel(path); setDiagnosticRequest({ path, token: Date.now(), kind: 'text' }); }} onOpenTranscription={model => { setRequestedTranscriptionModel(model); setModelTypeFilter('transcription'); setBrowserTab('loaded'); }} onOpenSpeech={model => { setRequestedSpeechModel(model); setModelTypeFilter('speech'); setBrowserTab('loaded'); }} onOpenMotion={id => { const path = MOTION_MODELS[id].path; setModelTypeFilter(id === 'pose' ? 'pose' : id === 'vector' ? 'vector' : id === 'tripo' ? 'mesh' : 'video'); setBrowserTab('loaded'); selectLocalModel(path); setDiagnosticRequest({ path, token: Date.now(), kind: 'text' }); }} onTest={model => { setModelTypeFilter('text'); const path = `models/${model.name}`; const due = pendingCapabilities(capabilityLedger, path, model, fileSizes[model.name]); const kind = model.visionProjector && due.length > 0 && due.every(id => id.startsWith('vision.')) ? 'vision' : 'text'; setBrowserTab('loaded'); if (config.provider === 'browser') update({ model: path }); else { const profile = { ...DEFAULT_PROFILES.find(item => item.provider === 'browser')!, id: uid(), label: model.label, model: path }; onAdd(profile); } setDiagnosticRequest({ path, token: Date.now(), kind }); }} onQueue={items => void queueCatalog(items)} onQueueVision={model => void queueCatalogVision(model)} onPrioritizeLicense={model => void prioritizeLicense(model)} onResumeQueued={model => void resumeQueuedModel(model)} onRemoveQueued={url => modelDownloadManager.removeQueued(url)} onDiscard={name => void discardDownload(name)} onLicenseConsentNeeded={(kind, action) => setPendingLicense({ kind, action })}/>
+      <ModelCatalog store={store} imageOptions={imageOptions || []} onWrite={onWrite} folder={folder} modelTypeFilter={modelTypeFilter} onModelTypeFilterChange={setModelTypeFilter} download={download} fileSizes={fileSizes} licensedModels={licensedModels} partialNames={partialNames} partialModels={partialModels} busy={permissionBusy} ledger={capabilityLedger} onRefreshCapabilities={() => { if (folder) void loadCapabilityLedger(folder, true).catch(error => setModelError(error instanceof Error ? error.message : String(error))); }} onTestImage={group => { const path = BROWSER_IMAGE_MODEL_PATHS[group]; setModelTypeFilter('image'); setBrowserTab('loaded'); selectLocalModel(path); setDiagnosticRequest({ path, token: Date.now(), kind: 'text' }); }} onOpenTranscription={model => { setRequestedTranscriptionModel(model); setModelTypeFilter('transcription'); setBrowserTab('loaded'); }} onOpenSpeech={model => { setRequestedSpeechModel(model); setModelTypeFilter('speech'); setBrowserTab('loaded'); }} onOpenMotion={id => { const path = MOTION_MODELS[id].path; setModelTypeFilter(id === 'pose' ? 'pose' : id === 'vector' ? 'vector' : id === 'tripo' ? 'mesh' : 'video'); setBrowserTab('loaded'); selectLocalModel(path); setDiagnosticRequest({ path, token: Date.now(), kind: 'text' }); }} onTest={model => { setModelTypeFilter('text'); const path = `models/${model.name}`; const due = pendingCapabilities(capabilityLedger, path, model, fileSizes[model.name]); const kind = model.visionProjector && due.length > 0 && due.every(id => id.startsWith('vision.')) ? 'vision' : 'text'; setBrowserTab('loaded'); if (config.provider === 'browser') update({ model: path }); else { const profile = { ...DEFAULT_PROFILES.find(item => item.provider === 'browser')!, id: uid(), label: model.label, model: path }; onAdd(profile); } setDiagnosticRequest({ path, token: Date.now(), kind }); }} onQueue={items => void queueCatalog(items)} onQueueVision={model => void queueCatalogVision(model)} onPrioritizeLicense={model => void prioritizeLicense(model)} onResumeQueued={model => void resumeQueuedModel(model)} onRemoveQueued={url => modelDownloadManager.removeQueued(url)} onDiscard={name => void discardDownload(name)} onLicenseConsentNeeded={(kind, action) => setPendingLicense({ kind, action })}/>
       </div>}
-      {browserTab === 'voices' && <div role="tabpanel"><VoiceProfiles folder={folder}/></div>}
+      {browserTab === 'voices' && <div role="tabpanel"><VoiceProfiles folder={folder} store={store} imageOptions={imageOptions} onWrite={onWrite}/></div>}
       {browserTab === 'downloads' && <div role="tabpanel">
       <h3>Downloads</h3>
       {!download.queue.length && !modelBusy && !needlePending && !imagePending && !speechPending && !motionPending && !(transcriptionDownload.active || transcriptionDownload.queue.length) && <p className="muted">No downloads queued.</p>}
@@ -548,7 +552,7 @@ export default function ProviderSettings({ config, profiles, onSelect, onChange,
         <form method="dialog"><button className="button primary compact" type="submit">Close</button></form>
       </dialog>
       </div>}
-      {browserTab === 'engines' && <div role="tabpanel"><EngineCatalog folder={folder}/></div>}
+      {browserTab === 'engines' && <div role="tabpanel"><EngineCatalog folder={folder} store={store} imageOptions={imageOptions} onWrite={onWrite}/></div>}
       {(modelError || download.error) && <p className="model-error" role="alert">{modelError || download.error}</p>}
     </div>}
     {config.provider !== 'browser' && <div className="two-col">
