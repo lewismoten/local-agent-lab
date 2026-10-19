@@ -3,6 +3,10 @@ export type SurfaceArtworkMap = { version: 1; items: Record<string, SurfaceArtwo
 
 export const emptySurfaceArtwork = (): SurfaceArtworkMap => ({ version: 1, items: {} });
 export const validSurfaceArtworkKey = (key: string) => /^[a-zA-Z0-9:._-]{1,160}$/.test(key);
+export const modelFamilyArtworkKey = (kind: string, family: string): string =>
+  `model-family:${kind}:${family.toLocaleLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'model'}`;
+export const modelFamilyArtworkEntry = (map: SurfaceArtworkMap, familyKey: string, oldKeys: string[]): SurfaceArtworkEntry | undefined =>
+  map.items[familyKey] || oldKeys.map(key => map.items[key]).find(Boolean);
 
 export function validSurfaceArtwork(value: unknown): value is SurfaceArtworkMap {
   if (!value || typeof value !== 'object') return false;

@@ -1,0 +1,111 @@
+.harness-achievement-sets-dialog {
+  width: min(900px, calc(100vw - 24px));
+  max-width: 900px;
+  max-height: min(88dvh, 960px);
+  color: var(--h-text);
+}
+.harness-achievement-sets-dialog > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 15px;
+}
+.harness-achievement-sets-dialog :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--h-line);
+  border-radius: 7px;
+  color: var(--h-text);
+  background: #0d1b2d;
+}
+.harness-achievement-sets-dialog label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--h-muted);
+  font-size: 12px;
+}
+.harness-achievement-set-choice {
+  margin: 16px 0;
+}
+.harness-achievement-set-actions,
+.harness-achievement-sets-dialog footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0;
+}
+.harness-achievement-sets-dialog > p {
+  color: var(--h-muted);
+  font-size: 12px;
+}
+.harness-achievement-set-form {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+.harness-achievement-set-form textarea {
+  min-height: 54px;
+  resize: vertical;
+}
+.harness-achievement-set-generate {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.harness-achievement-set-generate label {
+  flex: 1 1 160px;
+}
+.harness-achievement-set-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--h-muted);
+  font-size: 11px;
+}
+.harness-achievement-set-progress progress {
+  flex: 1;
+}
+.harness-achievement-set-entries {
+  display: grid;
+  gap: 8px;
+  max-height: min(48dvh, 540px);
+  overflow-y: auto;
+  padding: 2px;
+}
+.harness-achievement-set-entries fieldset {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--h-line);
+  border-radius: 8px;
+  background: #14243a;
+}
+.harness-achievement-set-entries legend {
+  padding: 0 5px;
+  color: var(--h-cyan);
+  font-size: 11px;
+  font-weight: 700;
+}
+.harness-achievement-set-entries fieldset label:last-child {
+  grid-column: 1 / -1;
+}
+.harness-achievement-sets-dialog footer {
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .harness-achievement-set-entries {
+    max-height: 42dvh;
+  }
+  .harness-achievement-set-entries fieldset {
+    grid-template-columns: 1fr;
+  }
+  .harness-achievement-set-entries fieldset label:last-child {
+    grid-column: auto;
+  }
+}

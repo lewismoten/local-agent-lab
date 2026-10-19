@@ -98,5 +98,81 @@ try {
   })()`);
   if (!reopened.favorite || !reopened.collections?.includes('Story covers') || !reopened.filter.includes('Story covers'))
     throw new Error(`Favorite or collection was not restored: ${JSON.stringify(reopened)}`);
-  console.log(`Generated image library passed: ${created.size} byte original PNG, full-size preview, favorite, named collection, and reload.`);
+  await evaluate(`(async () => {
+    const { browserFiles, writeBlob } = await import('/src/storage.ts');
+    const folder = await browserFiles(); if (!folder) throw new Error('Browser file storage is unavailable.');
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    const savedAsset = (await store.avatarLibrary()).find(item => item.id === '${created.id}');
+    const savedImage = await store.avatarAsset('${created.id}');
+    if (!savedAsset || !savedImage) throw new Error('Shared generated image is missing.');
+    await writeBlob(folder, 'outputs/images/recorder-copy.png', savedImage);
+    await writeBlob(folder, 'outputs/images/recorder-copy.json', new Blob([JSON.stringify({ imagePath: 'outputs/images/recorder-copy.png', prompt: savedAsset.prompt, imageModel: 'Fixture image', generatedAt: savedAsset.createdAt })], { type: 'application/json' }));
+    const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 96;
+    const context = canvas.getContext('2d'); context.fillStyle = '#15baac'; context.fillRect(0, 0, 96, 96);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    await writeBlob(folder, 'harness/projects/older-book/library/generated/old-scene.png', blob);
+    await writeBlob(folder, 'outputs/images/old-inspector.png', blob);
+    await writeBlob(folder, 'outputs/images/old-inspector.json', new Blob([JSON.stringify({ imagePath: 'outputs/images/old-inspector.png', prompt: 'An archived teal image', imageModel: 'Fixture inspector', generatedAt: '2026-01-02T00:00:00.000Z' })], { type: 'application/json' }));
+    return true;
+  })()`);
+  await evaluate("[...document.querySelectorAll('.harness-avatar-library-actions button')].find(button => button.textContent.includes('Find older images')).click(); true");
+  await waitFor("!![...document.querySelectorAll('.harness-avatar-tile strong')].find(node => node.textContent === 'old scene')", 'older image tile');
+  await waitFor("!![...document.querySelectorAll('.harness-avatar-tile strong')].find(node => node.textContent === 'old inspector')", 'older inspector tile');
+  const deduplicated = await evaluate(`(async () => {
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    const assets = await store.avatarLibrary();
+    return { matching: assets.filter(item => item.prompt === 'A teal circuit garden').length,
+      alias: assets.find(item => item.id === '${created.id}')?.relatedPaths?.includes('outputs/images/recorder-copy.png'),
+      separate: assets.some(item => item.path === 'outputs/images/recorder-copy.png') };
+  })()`);
+  if (deduplicated.matching !== 1 || !deduplicated.alias || deduplicated.separate)
+    throw new Error(`Inspector output made a duplicate image tile: ${JSON.stringify(deduplicated)}`);
+  await evaluate('location.reload(); true');
+  await waitFor("!![...document.querySelectorAll('.harness-avatar-tile strong')].find(node => node.textContent === 'old scene')", 'reopened older image');
+  const linked = await evaluate(`(async () => {
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    const assets = await store.avatarLibrary();
+    const item = assets.find(asset => asset.path?.endsWith('/old-scene.png'));
+    const inspector = assets.find(asset => asset.path === 'outputs/images/old-inspector.png');
+    const image = item ? await store.avatarAsset(item.id) : null;
+    return { path: item?.path, bytes: image?.size, mimeType: image?.type, inspectorPrompt: inspector?.prompt };
+  })()`);
+  if (!linked.path || !linked.bytes || linked.mimeType !== 'image/png' || linked.inspectorPrompt !== 'An archived teal image') throw new Error(`Older image link did not survive reload: ${JSON.stringify(linked)}`);
+  await evaluate("[...document.querySelectorAll('.harness-avatar-library-actions button')].find(button => button.textContent.includes('Find older images')).click(); true");
+  await waitFor("document.querySelector('.harness-avatar-library [role=status]')?.textContent.includes('No older images found')", 'repeat image scan');
+  const repeated = await evaluate(`(async () => {
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    const assets = await store.avatarLibrary();
+    return { total: assets.length, matching: assets.filter(item => item.prompt === 'A teal circuit garden').length,
+      alias: assets.find(item => item.id === '${created.id}')?.relatedPaths?.includes('outputs/images/recorder-copy.png') };
+  })()`);
+  if (repeated.matching !== 1 || !repeated.alias) throw new Error(`Repeat scan lost the image association: ${JSON.stringify(repeated)}`);
+  const large = await evaluate(`(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 96;
+    const context = canvas.getContext('2d'); context.fillStyle = '#bb75df'; context.fillRect(0, 0, 96, 96);
+    const png = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const original = new Blob([png, new Uint8Array(20_000_000)], { type: 'image/png' });
+    await window.__localAgentLabImageRecorder(original, { model: 'Large fixture', provider: 'browser', prompt: 'A large violet image' });
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    const asset = (await store.avatarLibrary()).find(item => item.prompt === 'A large violet image');
+    const saved = asset ? await store.avatarAsset(asset.id) : null;
+    return { id: asset?.id, path: asset?.path, bytes: saved?.size, originalBytes: original.size };
+  })()`);
+  if (!large.path?.startsWith('harness/images/originals/') || large.bytes !== large.originalBytes || large.bytes <= 20_000_000)
+    throw new Error(`Oversized generated image was not preserved: ${JSON.stringify(large)}`);
+  await evaluate('location.reload(); true');
+  await waitFor("!![...document.querySelectorAll('.harness-avatar-tile strong')].find(node => node.textContent.includes('Large fixture'))", 'reopened oversized image');
+  const largeTile = await evaluate(`(() => {
+    const tile = [...document.querySelectorAll('.harness-avatar-tile')].find(item => item.textContent.includes('Large fixture'));
+    return { placeholder: tile?.querySelector('.harness-avatar-preview-trigger')?.textContent, image: !!tile?.querySelector('.harness-avatar-preview-trigger img') };
+  })()`);
+  if (largeTile.placeholder !== 'Large image' || largeTile.image) throw new Error(`Oversized thumbnail should be deferred: ${JSON.stringify(largeTile)}`);
+  const persistedLarge = await evaluate(`(async () => {
+    const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
+    return (await store.avatarAsset('${large.id}'))?.size || 0;
+  })()`);
+  if (persistedLarge !== large.bytes) throw new Error(`Oversized original was not readable after reload: ${persistedLarge}`);
+  await evaluate("[...document.querySelectorAll('.harness-avatar-tile')].find(item => item.textContent.includes('Large fixture')).querySelector('.harness-avatar-preview-trigger').click(); true");
+  await waitFor("!!document.querySelector('.harness-avatar-preview-dialog[open] a[download$=\".png\"]')", 'oversized image download');
+  console.log(`Generated image library passed: original PNG, preview, favorite, collection, older image link, and ${large.bytes} byte generated source after reload.`);
 } finally { socket.close(); }

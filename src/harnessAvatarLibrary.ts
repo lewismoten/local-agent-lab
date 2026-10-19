@@ -1,4 +1,5 @@
 import { cleanTags, isoNow, newId } from './harnessData.ts';
+import { validGeneratedImagePath, validLibraryImagePath, type LibraryImageMimeType } from './harnessGeneratedImageIndex.ts';
 
 export type AvatarAsset = {
   id: string;
@@ -12,6 +13,10 @@ export type AvatarAsset = {
   packName?: string;
   favorite?: boolean;
   collections?: string[];
+  path?: string;
+  fileBytes?: number;
+  mimeType?: LibraryImageMimeType;
+  relatedPaths?: string[];
 };
 
 export type AvatarAssetInput = Pick<AvatarAsset, 'title' | 'tags' | 'source'> & Partial<Pick<AvatarAsset, 'prompt' | 'originIdentityId' | 'packId' | 'packName'>>;
@@ -54,6 +59,11 @@ export function validAvatarLibrary(value: unknown): value is { version: 1; asset
       && (item.favorite === undefined || typeof item.favorite === 'boolean')
       && (item.collections === undefined || (Array.isArray(item.collections) && item.collections.length <= 12
         && item.collections.every(name => typeof name === 'string' && name.length > 0 && name.length <= 50)))
+      && (item.path === undefined || (item.source === 'generated' && typeof item.path === 'string' && validLibraryImagePath(item.path)))
+      && (item.fileBytes === undefined || (Number.isSafeInteger(item.fileBytes) && item.fileBytes > 0))
+      && (item.mimeType === undefined || ['image/png', 'image/jpeg', 'image/webp', 'image/avif', 'image/gif'].includes(item.mimeType))
+      && (item.relatedPaths === undefined || (Array.isArray(item.relatedPaths) && item.relatedPaths.length <= 256
+        && item.relatedPaths.every(path => typeof path === 'string' && validGeneratedImagePath(path))))
       && (item.source === 'generated' || item.source === 'uploaded') && typeof item.createdAt === 'string';
   });
 }

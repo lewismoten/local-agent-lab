@@ -61,29 +61,44 @@ export function createSupraPipeline(ort: ImageOrt, files: readonly File[], token
         sessions.push(await ort.InferenceSession.create(url, { executionProviders: ['webgpu'], logSeverityLevel: 3 }));
       }
     },
-    async generate(prompt: string, options: { seed?: number; steps?: number; onProgress?: (value: { step: number; totalSteps: number }) => void } = {}) {
+    async generate(prompt: string, options: { seed?: number; steps?: number; onProgress?: (value: { step: number; totalSteps: number }) => void; onActivity?: (stage: string) => void; signal?: AbortSignal } = {}) {
       if (sessions.length !== 3) throw new Error('Supra2-IMG Mobile is not loaded.');
       const steps = options.steps ?? 20;
+      const checkStopped = () => { if (options.signal?.aborted) throw options.signal.reason || new DOMException('Image generation stopped.', 'AbortError'); };
       const encode = async (text: string) => {
+        checkStopped();
         const { ids, mask } = tokenize(text);
         const result = await sessions[0].run({ input_ids: new ort.Tensor('int64', ids, [1, CONTEXT]), attention_mask: new ort.Tensor('int64', BigInt64Array.from(mask, BigInt), [1, CONTEXT]) });
+        checkStopped();
         const values = floats(Object.values(result)[0].data);
         if (values.length !== CONTEXT * 768 || values.some(value => !Number.isFinite(value))) throw new Error('Supra2 returned invalid text embeddings.');
         return { values, mask };
       };
+      options.onActivity?.('Encoding prompt…');
+      await new Promise(resolve => setTimeout(resolve, 0));
       const cond = await encode(prompt);
+      options.onActivity?.('Preparing guidance…');
       const uncond = await encode('');
       const random = gaussian(options.seed ?? Math.floor(Math.random() * 2 ** 32));
       let latents = Float32Array.from({ length: LATENTS }, () => random());
       for (let step = 0; step < steps; step++) {
+        checkStopped();
+        if (step === 0) {
+          options.onActivity?.('Preparing first GPU pass…');
+          await new Promise(resolve => setTimeout(resolve, 0));
+          checkStopped();
+        }
         const velocity = [] as Float32Array[];
-        for (const context of [cond, uncond]) {
+        for (const [pass, context] of [cond, uncond].entries()) {
+          if (step === 0 && pass === 1) options.onActivity?.('First GPU pass complete · preparing guidance pass…');
+          checkStopped();
           const result = await sessions[1].run({
             z: new ort.Tensor('float32', latents, [1, 4, 32, 32]),
             t: new ort.Tensor('float32', new Float32Array([step / steps]), [1]),
             ctx: new ort.Tensor('float32', context.values, [1, CONTEXT, 768]),
             ctx_mask: new ort.Tensor('float32', context.mask, [1, CONTEXT]),
           });
+          checkStopped();
           velocity.push(floats(Object.values(result)[0].data));
         }
         if (velocity.some(item => item.length !== LATENTS)) throw new Error('Supra2 returned an unexpected transformer shape.');
@@ -103,7 +118,10 @@ export function createSupraPipeline(ort: ImageOrt, files: readonly File[], token
         }
       }
       const scaled = Float32Array.from(latents, value => value / 0.18215);
+      checkStopped();
+      options.onActivity?.('Decoding image…');
       const decoded = await sessions[2].run({ z: new ort.Tensor('float32', scaled, [1, 4, 32, 32]) });
+      checkStopped();
       return { imageData: imageFromPlanes(Object.values(decoded)[0].data, 256) };
     },
     async release() { await Promise.all(sessions.map(session => session.release())); sessions.length = 0; },

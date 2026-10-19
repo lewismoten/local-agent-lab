@@ -59,6 +59,8 @@ Portable workspace records are written under `harness/`:
 harness/workspace.json
 harness/settings.json
 harness/avatars/<identity-id>.png
+harness/avatars/library.json
+harness/images/originals/<image-id>.<format>
 harness/git-author.json
 harness/memory.json
 harness/tasks.json
@@ -97,6 +99,10 @@ providers do not expose a model file hash or an applied seed, so
 those fields remain empty rather than implying reproducibility.
 When camera-motion video starts from a prompt, its generated first
 frame and matching JSON record are saved under `sources/generated/`.
+The Images page saves a workspace-wide index of generated and reused
+artwork in `harness/avatars/library.json`. Large new images keep their
+original file under `harness/images/originals/`; older output files can
+be linked into the index without moving or copying them.
 
 Model profiles, the selected profile, and image generator settings travel with the workspace in `harness/settings.json`. API keys stay in browser memory and are cleared when switching workspaces. An existing browser profile setup is imported into the first workspace opened after this update. The model catalog, diagnostics, and engine downloads are inherited from the earlier Story Studio implementation. Its old data format and documentation are preserved in [legacy Story Studio documentation](legacy-story-studio.md); the new app does not silently convert or delete old story files.
 

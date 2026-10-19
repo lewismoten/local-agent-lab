@@ -56,7 +56,7 @@ try {
   await waitFor("[...document.querySelectorAll('.browser-model-tabs button')].some(button => button.textContent === 'Catalog')", 'catalog tab');
   await evaluate("[...document.querySelectorAll('.browser-model-tabs button')].find(button => button.textContent === 'Catalog').click(); true");
   await waitFor("!!document.querySelector('.model-catalog-name .harness-surface-artwork-button')", 'catalog artwork controls');
-  const selected = await evaluate("(() => { const button=document.querySelector('.model-catalog-name .harness-surface-artwork-button'); const title=button.getAttribute('aria-label').replace('Edit icon for ', ''); button.click(); return title; })()");
+  const selected = await evaluate("(() => { const button=[...document.querySelectorAll('.model-catalog-name .harness-surface-artwork-button')].find(item => item.getAttribute('aria-label') === 'Edit icon for Qwen family'); if (!button) throw new Error('Qwen family is absent from the catalog.'); button.click(); return 'Qwen'; })()");
   await waitFor("document.querySelector('.harness-surface-artwork-dialog')?.open", 'artwork editor');
   iconBase64 = await evaluate("(() => { const canvas=document.createElement('canvas'); canvas.width=64; canvas.height=64; const context=canvas.getContext('2d'); context.fillStyle='#69d5c9'; context.fillRect(0,0,64,64); return canvas.toDataURL('image/png').split(',')[1]; })()");
   await evaluate("[...document.querySelectorAll('.harness-surface-artwork-actions button')].find(button => button.textContent.includes('Generate')).click(); true");
@@ -65,6 +65,8 @@ try {
   await evaluate("document.querySelector('.harness-surface-artwork-dialog .harness-dialog-actions button').click(); true");
   await evaluate('location.reload(); true');
   await waitFor("!!document.querySelector('.model-catalog-name .harness-surface-artwork-button img')", 'model icon after reload');
+  const variants = await evaluate("(() => { const buttons=[...document.querySelectorAll('.model-catalog-name .harness-surface-artwork-button')].filter(item => item.getAttribute('aria-label') === 'Edit icon for Qwen family'); return { total: buttons.length, withIcon: buttons.filter(item => item.querySelector('img')).length }; })()");
+  if (variants.total < 2 || variants.withIcon !== variants.total) throw new Error(`Model family did not share its icon: ${JSON.stringify(variants)}`);
   await evaluate("document.querySelector('.model-catalog-name .harness-surface-artwork-button img').closest('button').click(); true");
   await waitFor("document.querySelector('.harness-surface-artwork-dialog')?.open", 'reopened artwork editor');
   await evaluate("document.querySelector('.harness-surface-artwork-dialog .harness-dialog-actions button').click(); [...document.querySelectorAll('.browser-model-tabs button')].find(button => button.textContent === 'Engines').click(); true");

@@ -1,4 +1,5 @@
 .harness-achievements-page { max-width: 1300px; }
+.harness-achievement-heading-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .harness-achievements-summary {
   display: flex;
   align-items: center;

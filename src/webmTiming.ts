@@ -1,3 +1,5 @@
+import { BlobByteReader } from './blobByteReader.ts';
+
 export type VideoTiming = {
   durationSeconds: number;
   encodedFrames: number;
@@ -30,31 +32,35 @@ function vint(bytes: Uint8Array, offset: number, limit: number, size: boolean) {
   return { value, length, unknown };
 }
 
-function elements(bytes: Uint8Array, start: number, end: number): Element[] {
-  const found: Element[] = [];
+async function* elements(reader: BlobByteReader, start: number, end: number): AsyncGenerator<Element> {
   let offset = start;
+  let count = 0;
   while (offset < end) {
-    const id = vint(bytes, offset, end, false);
-    const size = vint(bytes, offset + id.length, end, true);
+    if (++count > 1_000_000) throw new Error('Too many WebM elements.');
+    const header = await reader.read(offset, Math.min(16, end - offset));
+    const id = vint(header, 0, header.length, false);
+    const size = vint(header, id.length, header.length, true);
     const body = offset + id.length + size.length;
     const finish = size.unknown ? end : body + size.value;
-    if (finish > end || finish < body) throw new Error('Invalid WebM element size.');
-    found.push({ id: id.value, start: body, end: finish });
+    if (!Number.isSafeInteger(finish) || finish > end || finish < body) throw new Error('Invalid WebM element size.');
+    yield { id: id.value, start: body, end: finish };
     offset = finish;
   }
-  return found;
 }
 
-function unsigned(bytes: Uint8Array, start: number, end: number) {
+async function unsigned(reader: BlobByteReader, start: number, end: number) {
+  if (end - start > 8) throw new Error('Invalid WebM timing value.');
+  const bytes = await reader.read(start, end - start);
   let value = 0;
-  for (let index = start; index < end; index++) value = value * 256 + bytes[index];
+  for (const byte of bytes) value = value * 256 + byte;
   return value;
 }
 
-function blockTimecode(bytes: Uint8Array, block: Element) {
-  const track = vint(bytes, block.start, block.end, true);
-  const offset = block.start + track.length;
-  if (offset + 3 > block.end) throw new Error('Incomplete WebM block.');
+async function blockTimecode(reader: BlobByteReader, block: Element) {
+  const bytes = await reader.read(block.start, Math.min(11, block.end - block.start));
+  const track = vint(bytes, 0, bytes.length, true);
+  const offset = track.length;
+  if (offset + 3 > bytes.length) throw new Error('Incomplete WebM block.');
   const raw = (bytes[offset] << 8) | bytes[offset + 1];
   const flags = bytes[offset + 2];
   if (flags & 0x06) throw new Error('Laced WebM blocks are not measured.');
@@ -63,25 +69,29 @@ function blockTimecode(bytes: Uint8Array, block: Element) {
 
 /** Reads the video frame timestamps from a MediaRecorder WebM without decoding frames. */
 export async function measureWebmTiming(blob: Blob): Promise<VideoTiming> {
-  if (blob.size > 50_000_000) throw new Error('WebM timing analysis exceeds its 50 MB limit.');
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const segment = elements(bytes, 0, bytes.length).find(item => item.id === 0x18538067);
+  const reader = new BlobByteReader(blob);
+  let segment: Element | undefined;
+  for await (const item of elements(reader, 0, blob.size)) if (item.id === 0x18538067) { segment = item; break; }
   if (!segment) throw new Error('WebM segment missing.');
-  const children = elements(bytes, segment.start, segment.end);
-  const info = children.find(item => item.id === 0x1549a966);
-  const scaleElement = info && elements(bytes, info.start, info.end).find(item => item.id === 0x2ad7b1);
-  const nanosecondsPerTick = scaleElement ? unsigned(bytes, scaleElement.start, scaleElement.end) : 1_000_000;
+  let nanosecondsPerTick = 1_000_000;
   const ticks: number[] = [];
-  for (const cluster of children.filter(item => item.id === 0x1f43b675)) {
-    const parts = elements(bytes, cluster.start, cluster.end);
-    const clock = parts.find(item => item.id === 0xe7);
-    const base = clock ? unsigned(bytes, clock.start, clock.end) : 0;
-    for (const part of parts) {
-      if (part.id === 0xa3) ticks.push(base + blockTimecode(bytes, part));
-      if (part.id === 0xa0) for (const nested of elements(bytes, part.start, part.end)) {
-        if (nested.id === 0xa1) ticks.push(base + blockTimecode(bytes, nested));
-      }
+  for await (const child of elements(reader, segment.start, segment.end)) {
+    if (child.id === 0x1549a966) {
+      for await (const item of elements(reader, child.start, child.end))
+        if (item.id === 0x2ad7b1) nanosecondsPerTick = await unsigned(reader, item.start, item.end);
     }
+    if (child.id !== 0x1f43b675) continue;
+    let base = 0;
+    const local: number[] = [];
+    for await (const part of elements(reader, child.start, child.end)) {
+      if (part.id === 0xe7) base = await unsigned(reader, part.start, part.end);
+      if (part.id === 0xa3) local.push(await blockTimecode(reader, part));
+      if (part.id === 0xa0) for await (const nested of elements(reader, part.start, part.end)) {
+        if (nested.id === 0xa1) local.push(await blockTimecode(reader, nested));
+      }
+      if (ticks.length + local.length > 100_000) throw new Error('Too many WebM frame timestamps.');
+    }
+    for (const offset of local) ticks.push(base + offset);
   }
   if (ticks.length < 2 || !Number.isFinite(nanosecondsPerTick) || nanosecondsPerTick <= 0) throw new Error('WebM frame timing missing.');
   const frameTimestampsMs = ticks.map(tick => Math.round(tick * nanosecondsPerTick / 1_000_000 * 1000) / 1000).sort((a, b) => a - b);
@@ -92,8 +102,8 @@ export async function measureWebmTiming(blob: Blob): Promise<VideoTiming> {
     durationSeconds: Math.round(durationMs) / 1000,
     encodedFrames: frameTimestampsMs.length,
     effectiveFps: Math.round((frameTimestampsMs.length - 1) / durationMs * 1000 * 100) / 100,
-    minFrameIntervalMs: Math.round(Math.min(...intervals)),
-    maxFrameIntervalMs: Math.round(Math.max(...intervals)),
+    minFrameIntervalMs: Math.round(intervals.reduce((smallest, interval) => Math.min(smallest, interval), Infinity)),
+    maxFrameIntervalMs: Math.round(intervals.reduce((largest, interval) => Math.max(largest, interval), 0)),
     frameTimestampsMs,
   };
 }

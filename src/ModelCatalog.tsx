@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import HarnessSurfaceArtwork, { SurfaceArtworkButton } from './HarnessSurfaceArtwork.tsx';
-import { emptySurfaceArtwork, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
+import { emptySurfaceArtwork, modelFamilyArtworkEntry, modelFamilyArtworkKey, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
+import { imageIconFamily, motionIconFamily, speechIconFamily } from './harnessIconStudioPlan.ts';
 import type { HarnessStore } from './harnessStore.ts';
 import type { ImageConfig } from './imageGeneration.ts';
 import { MODEL_CATALOG, type CatalogModel } from './catalogModels';
@@ -78,7 +79,7 @@ const textTableModels = [
 const imageCatalogModels = BROWSER_IMAGE_GROUPS.map(group => ({
   kind: 'image' as const,
   model: {
-    group, id: `${group}-image`, family: group === 'model' ? 'Stable Diffusion' : group === 'sdxs' ? 'SDXS' : group === 'lcm' ? 'DreamShaper' : group === 'supra-mobile' ? 'Supra-IMG' : 'Tiny-SD', label: group === 'model' ? 'Stable Diffusion' : group === 'lcm' ? 'DreamShaper LCM' : group === 'supra-mobile' ? 'Supra-IMG Mobile' : browserImageModelLabel(group),
+    group, id: `${group}-image`, family: imageIconFamily(group), label: group === 'model' ? 'Stable Diffusion' : group === 'lcm' ? 'DreamShaper LCM' : group === 'supra-mobile' ? 'Supra-IMG Mobile' : browserImageModelLabel(group),
     name: group === 'model' ? 'SD-1.5-ONNX' : group === 'tiny-q4' ? 'Tiny-SD-Q4-ONNX' : group === 'tiny-fp16' ? 'Tiny-SD-FP16-ONNX' : group === 'sdxs' ? 'SDXS-DreamShaper-ONNX' : group === 'lcm' ? 'DreamShaper-8-LCM-INT8-ONNX' : 'Supra2-IMG-Mobile-ONNX',
     company: group === 'model' ? 'CompVis / Microsoft' : group === 'sdxs' || group === 'lcm' ? 'Lykon / skillsafeai' : group === 'supra-mobile' ? 'SupraLabs / mikhsol' : 'Segmind / cursedhelm', country: '—',
     companyUrl: group === 'model' ? 'https://github.com/CompVis/stable-diffusion' : group === 'sdxs' || group === 'lcm' ? 'https://huggingface.co/skillsafeai' : group === 'supra-mobile' ? 'https://huggingface.co/mikhsol' : 'https://huggingface.co/segmind',
@@ -92,14 +93,14 @@ const imageCatalogModels = BROWSER_IMAGE_GROUPS.map(group => ({
   },
 }));
 const speechCatalogModels = SPEECH_MODELS.map(item => ({ kind: 'speech' as const, model: {
-  group: item.id, id: `${item.id}-speech`, family: item.engine === 'kokoro' ? 'Kokoro' : item.engine === 'chatterbox' ? 'Chatterbox' : item.engine === 'qwen' ? 'Qwen3-TTS' : item.engine === 'openvoice' ? 'OpenVoice' : 'Pocket TTS', label: item.label, name: item.path.slice('models/'.length),
+  group: item.id, id: `${item.id}-speech`, family: speechIconFamily(item.engine), label: item.label, name: item.path.slice('models/'.length),
   company: item.engine === 'kokoro' ? 'hexgrad / ONNX Community' : item.engine === 'chatterbox' ? 'Resemble AI' : item.engine === 'qwen' ? 'Alibaba Cloud / ggml-org' : item.engine === 'openvoice' ? 'MyShell.ai / TigreGotico' : 'Kyutai / vlapky', country: item.engine === 'kokoro' ? '—' : item.engine === 'chatterbox' ? 'United States' : item.engine === 'qwen' ? 'China' : item.engine === 'openvoice' ? '—' : 'France', companyUrl: item.engine === 'kokoro' ? 'https://github.com/hexgrad/kokoro' : item.engine === 'chatterbox' ? 'https://www.resemble.ai/' : item.engine === 'qwen' ? 'https://github.com/QwenLM/Qwen3-TTS' : item.engine === 'openvoice' ? 'https://github.com/myshell-ai/OpenVoice' : 'https://kyutai.org/', version: item.engine === 'kokoro' ? '1.0' : item.id === 'chatterbox_q4f16' ? 'Original' : item.engine === 'chatterbox' ? 'Turbo' : item.engine === 'qwen' ? '3' : item.engine === 'openvoice' ? '2' : '2026', parameters: item.engine === 'kokoro' ? 0.082 : item.id === 'chatterbox_q4f16' ? 0.5 : item.engine === 'chatterbox' ? 0.35 : item.engine === 'qwen' ? 1.7 : 0,
   quantization: item.engine === 'kokoro' ? 'Q8' : item.engine === 'chatterbox' ? 'Q4F16' : item.engine === 'qwen' ? 'Q4_K_M' : item.engine === 'openvoice' ? 'Q8' : 'INT8', bytes: item.bytes, contextTokens: 0, license: item.engine === 'kokoro' || item.engine === 'qwen' ? 'Apache 2.0' : item.engine === 'chatterbox' || item.engine === 'openvoice' ? 'MIT' : 'CC BY 4.0', toolUse: 'not-applicable', thinking: 'not-applicable',
   reason: item.engine === 'kokoro' ? 'Expressive English speech with selectable voices.' : item.id === 'chatterbox_q4f16' ? 'Voice cloning with adjustable expression.' : item.engine === 'chatterbox' ? 'Fast voice cloning with sound tags.' : item.engine === 'qwen' ? 'Multilingual voice cloning with a larger browser runtime.' : item.engine === 'openvoice' ? 'Converts existing speech into a reference voice; pair with any TTS model.' : `${item.language} speech with built-in voices or a short voice recording.`, source: item.source, licenseUrl: item.licenseUrl,
 } }));
 const transcriptionCatalogModels = TRANSCRIPTION_MODELS.map(item => ({ kind: 'transcription' as const, model: { id: item.id, family: item.family, label: item.label, name: item.path.slice('models/'.length), group: item.id, company: item.company, country: item.country, companyUrl: item.id === 'sherpa' ? 'https://github.com/k2-fsa/sherpa-onnx' : `https://huggingface.co/${item.repo}`, version: item.version, parameters: item.parametersB, quantization: item.quantization, bytes: transcriptionTotal(item.id), contextTokens: 0, license: item.license, toolUse: 'not-applicable', thinking: 'not-applicable', reason: item.description, source: item.id === 'sherpa' ? `https://github.com/k2-fsa/sherpa-onnx/releases/tag/${item.revision}` : `https://huggingface.co/${item.repo}/tree/${item.revision}`, licenseUrl: item.licenseUrl } }));
 const motionCatalogModels = MOTION_MODEL_IDS.map(id => ({ kind: 'motion' as const, model: {
-  id: `${id}-motion`, family: id === 'depth' ? 'Depth Anything' : id === 'rife' ? 'RIFE' : id === 'pose' ? 'Pose Landmarker' : id === 'vector' ? 'VTracer' : 'TripoSR', label: MOTION_MODELS[id].label,
+  id: `${id}-motion`, family: motionIconFamily(id), label: MOTION_MODELS[id].label,
   name: MOTION_MODELS[id].path.slice('models/'.length), group: id, company: id === 'depth' ? 'Depth Anything / ONNX Community' : id === 'rife' ? 'hzwer / Edge Tools' : id === 'pose' ? 'Google' : id === 'vector' ? 'Visioncortex' : 'Tripo AI / Stability AI', country: id === 'pose' ? 'United States' : '—', companyUrl: MOTION_MODELS[id].source,
   version: id === 'depth' ? '2 Small' : id === 'rife' ? '4.9' : id === 'pose' ? 'Full' : id === 'vector' ? '1.0 alpha 4' : 'Q8 export', parameters: 0, quantization: id === 'depth' ? 'Q4' : id === 'rife' ? 'FP32' : id === 'pose' ? 'FP16' : id === 'vector' ? 'WASM' : 'INT8', bytes: motionTotal(id), contextTokens: 0,
   license: MOTION_MODELS[id].license, toolUse: 'not-applicable', thinking: 'not-applicable', reason: MOTION_MODELS[id].purpose,
@@ -150,8 +151,11 @@ export default function ModelCatalog({ store, imageOptions, onWrite, folder, dow
     return () => { active = false; };
   }, [folder, reportRevision, reportRefresh]);
   useEffect(() => { if (!store) return; let active = true; void store.surfaceArtwork().then(value => { if (active) setSurfaceMap(value); }).catch(error => { if (active) setDetailsError(error instanceof Error ? error.message : String(error)); }); return () => { active = false; }; }, [store]);
-  const artworkKey = (row: TableModel) => `model:${row.kind}:${row.model.id}`;
-  const artworkControl = (row: TableModel) => store && onWrite ? <SurfaceArtworkButton store={store} title={row.model.label} assetId={surfaceMap.items[artworkKey(row)]?.assetId} onOpen={() => setArtworkRow(row)}/> : null;
+  const artworkKey = (row: TableModel) => modelFamilyArtworkKey(row.kind, row.model.family);
+  const oldArtworkKeys = (row: TableModel) => tableModels.filter(item => item.kind === row.kind && item.model.family === row.model.family)
+    .map(item => `model:${item.kind}:${item.model.id}`);
+  const artworkEntry = (row: TableModel) => modelFamilyArtworkEntry(surfaceMap, artworkKey(row), oldArtworkKeys(row));
+  const artworkControl = (row: TableModel) => store && onWrite ? <SurfaceArtworkButton store={store} title={`${row.model.family} family`} assetId={artworkEntry(row)?.assetId} onOpen={() => setArtworkRow(row)}/> : null;
   const needleAssets = useSyncExternalStore(subscribeNeedleAssets, getNeedleAssets);
   const browserImage = useSyncExternalStore(subscribeBrowserImageAssets, getBrowserImageAssets);
   const speech = useSyncExternalStore(subscribeSpeechAssets, getSpeechAssets);
@@ -418,6 +422,6 @@ export default function ModelCatalog({ store, imageOptions, onWrite, folder, dow
       </>}
       <form method="dialog"><button className="button primary compact" type="submit">Close</button></form>
     </dialog>
-    {artworkRow && store && onWrite && <HarnessSurfaceArtwork key={artworkKey(artworkRow)} store={store} surfaceKey={artworkKey(artworkRow)} title={artworkRow.model.label} kind={`${artworkRow.kind} model`} entry={surfaceMap.items[artworkKey(artworkRow)]} imageOptions={imageOptions} folder={folder} onWrite={onWrite} onSaved={setSurfaceMap} onClose={() => setArtworkRow(null)}/>}
+    {artworkRow && store && onWrite && <HarnessSurfaceArtwork key={artworkKey(artworkRow)} store={store} surfaceKey={artworkKey(artworkRow)} title={artworkRow.model.family} kind={`${artworkRow.kind} model family`} entry={artworkEntry(artworkRow)} replaceKeys={oldArtworkKeys(artworkRow)} imageOptions={imageOptions} folder={folder} onWrite={onWrite} onSaved={setSurfaceMap} onClose={() => setArtworkRow(null)}/>}
   </section>;
 }

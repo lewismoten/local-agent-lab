@@ -1,4 +1,5 @@
 import type { VideoTiming } from './webmTiming.ts';
+import { BlobByteReader } from './blobByteReader.ts';
 
 type Box = { type: string; start: number; end: number };
 type Sample = { pts: number; duration: number };
@@ -147,10 +148,38 @@ function fragmentSamples(view: DataView, root: Box[], movie: Box, trackId: numbe
   return samples;
 }
 
-/** Reads video sample timing from bounded MP4 files produced by MediaRecorder. */
+/** Collects only movie and fragment metadata; media payloads may be much larger. */
+async function timingMetadata(blob: Blob): Promise<ArrayBuffer> {
+  const reader = new BlobByteReader(blob);
+  const parts: Blob[] = [];
+  let total = 0;
+  for (let at = 0, count = 0; at < blob.size;) {
+    if (++count > 100_000) throw new Error('Too many MP4 boxes.');
+    const bytes = await reader.read(at, Math.min(16, blob.size - at));
+    if (bytes.length < 8) throw new Error('Incomplete MP4 box header.');
+    const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let size = header.getUint32(0, false);
+    const type = String.fromCharCode(...bytes.subarray(4, 8));
+    const headerSize = size === 1 ? 16 : 8;
+    if (size === 1) {
+      if (bytes.length < 16) throw new Error('Incomplete large MP4 box header.');
+      size = Number(header.getBigUint64(8, false));
+    } else if (size === 0) size = blob.size - at;
+    if (!Number.isSafeInteger(size) || size < headerSize || at + size > blob.size)
+      throw new Error('Invalid MP4 box size.');
+    if (type === 'moov' || type === 'moof') {
+      total += size;
+      if (total > 64_000_000) throw new Error('MP4 timing metadata exceeds its 64 MB limit.');
+      parts.push(blob.slice(at, at + size));
+    }
+    at += size;
+  }
+  return new Blob(parts).arrayBuffer();
+}
+
+/** Reads video sample timing without loading encoded media samples. */
 export async function measureMp4Timing(blob: Blob): Promise<VideoTiming> {
-  if (blob.size > 50_000_000) throw new Error('MP4 timing analysis exceeds its 50 MB limit.');
-  const buffer = await blob.arrayBuffer();
+  const buffer = await timingMetadata(blob);
   const view = new DataView(buffer);
   const root = boxes(view, 0, buffer.byteLength);
   const movie = root.find(box => box.type === 'moov');

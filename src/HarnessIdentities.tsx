@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Plus, Sparkles, Upload, X } from 'lucide-react';
 import type { AvatarAsset, AvatarAssetInput } from './harnessAvatarLibrary.ts';
 import { avatarPackPlan, runAvatarPack, type AvatarPackAge, type AvatarPackGender, type AvatarPackKind } from './harnessAvatarPack.ts';
@@ -6,6 +6,7 @@ import { exportAvatarPack, importAvatarPack } from './harnessAvatarPackTransfer.
 import { AVATAR_DIRECTION_PRESETS, AVATAR_STYLE_PRESETS, cleanAvatarPackPreferences, type AvatarPackPreferences } from './harnessAvatarPackPreferences.ts';
 import { IMAGE_USES, imageUseIndex, type ImageUse } from './harnessImageUse.ts';
 import { scanLegacyAvatarLinks, type LegacyAvatarScan } from './harnessLegacyAvatarLinks.ts';
+import { scanGeneratedImageFiles } from './harnessGeneratedImageIndex.ts';
 import { AVATAR_VISION_TAG_PROMPT, mergeAvatarVisionTags, parseAvatarVisionTags } from './harnessAvatarVision.ts';
 import { identityAvatarPath, isoNow, newId, type HarnessIdentity } from './harnessData.ts';
 import { IDENTITY_ICONS, compactIdentityAvatar, identityAvatarPrompt, identityDraft } from './harnessIdentityAvatar.ts';
@@ -20,17 +21,20 @@ import type { HarnessStore } from './harnessStore.ts';
 import { showCompletionToast, showToast } from './toastStore.ts';
 import { avatarVisionSetupMessage } from './harnessAvatarVisionReadiness.ts';
 
+const HarnessIconStudio = lazy(() => import('./HarnessIconStudio.tsx'));
+
 function IdentityCard({ identity, store, selected, onEdit, onSelect }: { identity: HarnessIdentity; store: HarnessStore; selected: boolean; onEdit: () => void; onSelect: () => void }) {
   const url = useIdentityAvatarUrl(store, identity);
   return <article className="harness-card harness-identity-card"><div><IdentityAvatar identity={identity} url={url} size={42}/><span className="harness-overline">{identity.focus.toUpperCase()}</span></div><h2>{identity.name}</h2><p>{identity.instructions}</p><div><button className="harness-secondary" onClick={onEdit}>Edit</button><button className="harness-secondary" disabled={selected} onClick={onSelect}>{selected ? 'Chat default' : 'Use for chat'}</button></div></article>;
 }
 
-export default function HarnessIdentities({ identities, chatIdentityId, store, folder, imageOptions, onSave, onSelectChat, onSaveAvatar, onSaveAsset, onUpdateAsset, onOpenModels, mode = 'identities', onOpenImages }: {
+export default function HarnessIdentities({ identities, chatIdentityId, store, folder, imageOptions, onWrite, onSave, onSelectChat, onSaveAvatar, onSaveAsset, onUpdateAsset, onOpenModels, mode = 'identities', onOpenImages }: {
   identities: HarnessIdentity[];
   chatIdentityId: string;
   store: HarnessStore;
   folder: FileSystemDirectoryHandle | null;
   imageOptions: ImageConfig[];
+  onWrite: <T,>(action: () => Promise<T>) => Promise<T>;
   onSave: (identity: HarnessIdentity) => Promise<void>;
   onSelectChat: (id: string) => Promise<void>;
   onSaveAvatar: (id: string, blob: Blob) => Promise<string>;
@@ -47,6 +51,7 @@ export default function HarnessIdentities({ identities, chatIdentityId, store, f
   const packImportInput = useRef<HTMLInputElement>(null);
   const generation = useRef<AbortController | null>(null);
   const packGeneration = useRef<AbortController | null>(null);
+  const olderImageScan = useRef<AbortController | null>(null);
   const tagGeneration = useRef<AbortController | null>(null);
   const automaticPrompt = useRef('');
   const [draft, setDraft] = useState<HarnessIdentity | null>(null);
@@ -56,11 +61,15 @@ export default function HarnessIdentities({ identities, chatIdentityId, store, f
   const [assets, setAssets] = useState<AvatarAsset[]>([]);
   const [legacyIds, setLegacyIds] = useState<string[]>([]);
   const [gallerySearch, setGallerySearch] = useState('');
+  const achievementBatch = location.hash.includes('batch=achievements');
+  const [iconStudioOpen, setIconStudioOpen] = useState(achievementBatch);
   const [imageCategory, setImageCategory] = useState<ImageUse | ''>('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [collectionFilter, setCollectionFilter] = useState('');
   const [imageUses, setImageUses] = useState<Map<string, Set<ImageUse>>>(new Map());
   const [imageUseProgress, setImageUseProgress] = useState('');
+  const [olderImageProgress, setOlderImageProgress] = useState('');
+  const [olderImageScanning, setOlderImageScanning] = useState(false);
   const [legacyReview, setLegacyReview] = useState<{ scan: LegacyAvatarScan; linked: number } | null>(null);
   const identitiesRef = useRef(identities);
   const saveIdentityRef = useRef(onSave);
@@ -102,7 +111,7 @@ export default function HarnessIdentities({ identities, chatIdentityId, store, f
   const [packError, setPackError] = useState('');
   const browserModel = useSyncExternalStore(subscribeBrowserModel, getBrowserModelStatus);
   const visionReady = isBrowserVisionReady(browserModel.path);
-  useEffect(() => () => { generation.current?.abort(); packGeneration.current?.abort(); tagGeneration.current?.abort(); }, []);
+  useEffect(() => () => { generation.current?.abort(); packGeneration.current?.abort(); tagGeneration.current?.abort(); olderImageScan.current?.abort(); }, []);
   useEffect(() => {
     let active = true;
     void store.avatarPackPreferences().then(saved => { if (active) setPackPreferences(saved); })
@@ -377,6 +386,21 @@ export default function HarnessIdentities({ identities, chatIdentityId, store, f
       setPackTransferError('');
     } catch (cause) { setPackTransferError(cause instanceof Error ? cause.message : String(cause)); }
   };
+  const findOlderImages = async () => {
+    if (!folder || olderImageScanning) return;
+    const controller = new AbortController(); olderImageScan.current = controller;
+    setOlderImageScanning(true); setOlderImageProgress('Looking for older generated images…');
+    try {
+      const found = await scanGeneratedImageFiles(folder, new Set(assets.flatMap(asset => [asset.path, ...(asset.relatedPaths || [])].filter((path): path is string => !!path))), controller.signal,
+        (scanned, count) => setOlderImageProgress(`Checked ${scanned} files · ${count} new images`));
+      if (controller.signal.aborted) return;
+      const { added, linked } = found.length ? await store.linkGeneratedImageFiles(found, folder) : { added: 0, linked: 0 };
+      if (controller.signal.aborted) return;
+      if (added || linked) setAssets(await store.avatarLibrary());
+      setOlderImageProgress(added || linked ? `Added ${added} older image${added === 1 ? '' : 's'} · linked ${linked} saved output${linked === 1 ? '' : 's'}.` : 'No older images found.');
+    } catch (cause) { if (!controller.signal.aborted) setOlderImageProgress(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (olderImageScan.current === controller) olderImageScan.current = null; setOlderImageScanning(false); }
+  };
   const exportSelectedPack = async () => {
     const selected = packs.find(([id]) => id === selectedPackId);
     if (!selected || packTransfer) return;
@@ -425,7 +449,7 @@ export default function HarnessIdentities({ identities, chatIdentityId, store, f
       <div className="harness-identity-grid">{identities.map(identity => <IdentityCard key={identity.id} identity={identity} store={store} selected={chatIdentityId === identity.id} onEdit={() => edit(identity)} onSelect={() => void selectChat(identity.id)}/>)}</div>
       {onOpenImages && <button className="harness-secondary" type="button" onClick={onOpenImages}>Open image library</button>}
     </> : <div className="harness-heading"><div><span className="harness-overline">WORKSPACE IMAGES</span><h1>Images</h1><p>Browse saved artwork and avatar packs by use.</p></div></div>}
-    {mode === 'images' && <section className="harness-avatar-library" aria-label="Image library"><div className="harness-avatar-library-head"><div><span className="harness-overline">IMAGE LIBRARY</span><h2>Saved images</h2></div><div className="harness-avatar-library-actions"><select aria-label="Image use" value={imageCategory} onChange={event => setImageCategory(event.target.value as ImageUse | '')}><option value="">All uses</option>{IMAGE_USES.filter(use => assets.some(asset => imageUses.get(asset.id)?.has(use))).map(use => <option key={use} value={use}>{use}</option>)}</select><button className="harness-secondary harness-image-favorites-filter" type="button" aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(value => !value)}>★ Favorites</button>{collections.length > 0 && <select aria-label="Image collection" value={collectionFilter} onChange={event => setCollectionFilter(event.target.value)}><option value="">All collections</option>{collections.map(name => <option key={name} value={name}>{name}</option>)}</select>}{packs.length > 0 && <select aria-label="Avatar pack" value={selectedPackId} onChange={event => setSelectedPackId(event.target.value)}><option value="">All packs</option>{packs.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>}<input aria-label="Search saved images" value={gallerySearch} onChange={event => setGallerySearch(event.target.value)} placeholder="Search images or tags…"/><HarnessAvatarTagBatch assets={assets} store={store} onUpdateAsset={onUpdateAsset} onSaved={updated => setAssets(current => current.map(asset => asset.id === updated.id ? updated : asset))} onOpenModels={onOpenModels}/>{selectedPackId && <button className="harness-secondary" disabled={packTransfer} onClick={() => void exportSelectedPack()}>Export pack</button>}<button className="harness-secondary" disabled={packTransfer} onClick={() => packImportInput.current?.click()}>Import pack</button><input ref={packImportInput} type="file" accept=".json,application/json" hidden onChange={event => { void importPackFile(event.target.files?.[0]); event.target.value = ''; }}/><button className="harness-secondary" onClick={openPack}><Sparkles size={15}/> Generate pack</button></div></div>{imageUseProgress && <p className="harness-muted" role="status">{imageUseProgress}</p>}{legacyReview && <details className="harness-image-legacy" open={legacyReview.scan.ambiguous.length > 0 || undefined}><summary>Older avatars: {legacyReview.linked} linked · {legacyReview.scan.ambiguous.length} to review · {legacyReview.scan.missing.length} without a match</summary>{legacyReview.scan.ambiguous.map(candidate => <div key={candidate.identity.id}><strong>{candidate.identity.name}</strong><span>Choose the saved image to link:</span>{candidate.assetIds.map(id => <button key={id} className="harness-secondary" type="button" onClick={() => void resolveLegacyAvatar(candidate.identity.id, id)}>{assets.find(asset => asset.id === id)?.title || 'Image'} · {id.slice(0, 6)}</button>)}</div>)}{legacyReview.scan.missing.map(identity => <p key={identity.id}>{identity.name}: no matching saved image.</p>)}</details>}{packTransferProgress && <p className="harness-muted" role="status">{packTransferProgress}</p>}{packTransferError && <p className="harness-git-error" role="alert">{packTransferError}</p>}{assets.length || legacy.length ? <HarnessAvatarGallery store={store} assets={categoryAssets} legacy={!selectedPackId && (!imageCategory || imageCategory === 'Avatars') ? legacy : []} query={gallerySearch} onUseAsset={asset => void useAsset(asset)} onUseIdentity={identity => void useLegacyImage(identity)} onEdit={editAsset} onFavorite={asset => void toggleFavorite(asset)}/> : <p className="harness-muted">Images you upload or generate will appear here for reuse.</p>}</section>}
+    {mode === 'images' && <section className="harness-avatar-library" aria-label="Image library"><div className="harness-avatar-library-head"><div><span className="harness-overline">IMAGE LIBRARY</span><h2>Saved images</h2></div><div className="harness-avatar-library-actions"><select aria-label="Image use" value={imageCategory} onChange={event => setImageCategory(event.target.value as ImageUse | '')}><option value="">All uses</option>{IMAGE_USES.filter(use => assets.some(asset => imageUses.get(asset.id)?.has(use))).map(use => <option key={use} value={use}>{use}</option>)}</select><button className="harness-secondary harness-image-favorites-filter" type="button" aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(value => !value)}>★ Favorites</button>{collections.length > 0 && <select aria-label="Image collection" value={collectionFilter} onChange={event => setCollectionFilter(event.target.value)}><option value="">All collections</option>{collections.map(name => <option key={name} value={name}>{name}</option>)}</select>}{packs.length > 0 && <select aria-label="Avatar pack" value={selectedPackId} onChange={event => setSelectedPackId(event.target.value)}><option value="">All packs</option>{packs.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>}<button className="harness-secondary" type="button" aria-expanded={iconStudioOpen} onClick={() => setIconStudioOpen(open => !open)}><Sparkles size={15}/> Batch icons</button><input aria-label="Search saved images" value={gallerySearch} onChange={event => setGallerySearch(event.target.value)} placeholder="Search images or tags…"/>{folder && <button className="harness-secondary" type="button" disabled={olderImageScanning} onClick={() => void findOlderImages()}>{olderImageScanning ? "Looking…" : "Find older images"}</button>}<HarnessAvatarTagBatch assets={assets} store={store} onUpdateAsset={onUpdateAsset} onSaved={updated => setAssets(current => current.map(asset => asset.id === updated.id ? updated : asset))} onOpenModels={onOpenModels}/>{selectedPackId && <button className="harness-secondary" disabled={packTransfer} onClick={() => void exportSelectedPack()}>Export pack</button>}<button className="harness-secondary" disabled={packTransfer} onClick={() => packImportInput.current?.click()}>Import pack</button><input ref={packImportInput} type="file" accept=".json,application/json" hidden onChange={event => { void importPackFile(event.target.files?.[0]); event.target.value = ''; }}/><button className="harness-secondary" onClick={openPack}><Sparkles size={15}/> Generate pack</button></div></div>{iconStudioOpen && <Suspense fallback={<p className="harness-muted">Opening icon studio…</p>}><HarnessIconStudio store={store} identities={identities} initialKinds={achievementBatch ? ['achievements'] : ['models']} initialScope={achievementBatch ? 'all' : 'missing'} folder={folder} imageOptions={imageOptions} onWrite={onWrite} onSaveIdentity={onSave} onSaveAvatar={onSaveAvatar} onSaveAsset={onSaveAsset} onAssetSaved={asset => setAssets(current => [asset, ...current])} onClose={() => setIconStudioOpen(false)}/></Suspense>}{olderImageProgress && <p className="harness-muted" role="status">{olderImageProgress}</p>}{imageUseProgress && <p className="harness-muted" role="status">{imageUseProgress}</p>}{legacyReview && <details className="harness-image-legacy" open={legacyReview.scan.ambiguous.length > 0 || undefined}><summary>Older avatars: {legacyReview.linked} linked · {legacyReview.scan.ambiguous.length} to review · {legacyReview.scan.missing.length} without a match</summary>{legacyReview.scan.ambiguous.map(candidate => <div key={candidate.identity.id}><strong>{candidate.identity.name}</strong><span>Choose the saved image to link:</span>{candidate.assetIds.map(id => <button key={id} className="harness-secondary" type="button" onClick={() => void resolveLegacyAvatar(candidate.identity.id, id)}>{assets.find(asset => asset.id === id)?.title || 'Image'} · {id.slice(0, 6)}</button>)}</div>)}{legacyReview.scan.missing.map(identity => <p key={identity.id}>{identity.name}: no matching saved image.</p>)}</details>}{packTransferProgress && <p className="harness-muted" role="status">{packTransferProgress}</p>}{packTransferError && <p className="harness-git-error" role="alert">{packTransferError}</p>}{assets.length || legacy.length ? <HarnessAvatarGallery store={store} assets={categoryAssets} legacy={!selectedPackId && (!imageCategory || imageCategory === 'Avatars') ? legacy : []} query={gallerySearch} onUseAsset={asset => void useAsset(asset)} onUseIdentity={identity => void useLegacyImage(identity)} onEdit={editAsset} onFavorite={asset => void toggleFavorite(asset)}/> : <p className="harness-muted">Images you upload or generate will appear here for reuse.</p>}</section>}
     <dialog ref={packDialog} className="harness-dialog harness-avatar-pack-dialog" onCancel={event => { event.preventDefault(); if (!packRunning) closePack(); }}>
       <div className="harness-identity-dialog-head"><h2>Generate avatar pack</h2><button className="harness-icon" aria-label="Close avatar pack" disabled={packRunning} onClick={closePack}><X size={16}/></button></div>
       <label>Pack name<input value={packName} maxLength={80} disabled={packRunning} onChange={event => setPackName(event.target.value)} placeholder="Name this group of avatars"/></label>

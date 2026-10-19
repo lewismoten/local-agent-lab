@@ -7,7 +7,7 @@ import { visualRuntimeFailure, visualRuntimeFailureMessage } from './visualRunti
 
 type Pipeline = {
   loadModels: (progress?: (value: { stage: string; model: string; index: number; total: number }) => void) => Promise<void>;
-  generate: (prompt: string, options?: { seed?: number; steps?: number; onProgress?: (value: { step: number; totalSteps: number }) => void }) => Promise<{ imageData: ImageData }>;
+  generate: (prompt: string, options?: { seed?: number; steps?: number; onProgress?: (value: { step: number; totalSteps: number }) => void; onActivity?: (stage: string) => void; signal?: AbortSignal }) => Promise<{ imageData: ImageData }>;
   onPreview?: (value: BrowserImagePreview) => void;
   guidanceScale?: number;
   release: () => Promise<void>;
@@ -238,7 +238,7 @@ export async function generateBrowserImage(prompt: string, signal?: AbortSignal,
         options.onStep?.(value.step, value.totalSteps);
       };
       result = group === 'model' || group === 'sdxs' || group === 'lcm' || group === 'supra-mobile'
-        ? await model.generate(prompt, { seed: options.seed, steps, onProgress })
+        ? await model.generate(prompt, { seed: options.seed, steps, onProgress, signal, onActivity: group === 'supra-mobile' ? stage => progress?.(stage) : undefined })
         : await (await import('./tinySdPipeline.ts')).generateTinySd(model as unknown as TinyPipeline, globalRuntime.ort as unknown as Ort, prompt, steps, onProgress, options.seed, guidanceScale);
     } catch (cause) {
       if (visualRuntimeFailure(cause)) {

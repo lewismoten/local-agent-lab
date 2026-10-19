@@ -1,0 +1,105 @@
+.harness-icon-studio {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid var(--h-line);
+  border-radius: 11px;
+  color: var(--h-text);
+  background: linear-gradient(145deg, #172c40, #101c30);
+  box-shadow:
+    inset 0 1px #c8fff019,
+    0 12px 30px #0005;
+}
+.harness-icon-studio-head,
+.harness-icon-studio-fields,
+.harness-icon-studio-kinds,
+.harness-icon-studio-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.harness-icon-studio-head {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.harness-icon-studio h3 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+.harness-icon-studio label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--h-muted);
+  font-size: 12px;
+}
+.harness-icon-studio-kinds {
+  margin: 8px 0 14px;
+}
+.harness-icon-studio-kinds label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--h-line);
+  border-radius: 7px;
+  color: var(--h-text);
+  background: #192b40;
+}
+.harness-icon-studio-fields {
+  align-items: stretch;
+}
+.harness-icon-studio-fields label {
+  flex: 1 1 190px;
+}
+.harness-icon-studio input:not([type='checkbox']),
+.harness-icon-studio select,
+.harness-icon-studio textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--h-line);
+  border-radius: 7px;
+  color: var(--h-text);
+  background: #0c1b2c;
+}
+.harness-icon-studio > label {
+  margin-top: 12px;
+}
+.harness-icon-studio textarea {
+  resize: vertical;
+}
+.harness-icon-studio .harness-muted {
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.harness-icon-studio-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  min-width: 0;
+  color: var(--h-muted);
+  font-size: 11px;
+}
+.harness-icon-studio-progress progress {
+  flex: 0 0 min(200px, 42%);
+  height: 8px;
+  accent-color: var(--h-cyan);
+}
+.harness-icon-studio-progress span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .harness-icon-studio {
+    padding: 13px;
+  }
+  .harness-icon-studio-progress {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .harness-icon-studio-progress progress {
+    flex: none;
+    width: 100%;
+  }
+}

@@ -1,12 +1,14 @@
-import { hasWritableFolderPermission, readBlob, removeBlob, writeBlob } from './storage.ts';
+import { browserFiles, hasWritableFolderPermission, readBlob, removeBlob, writeBlob } from './storage.ts';
 import { cleanImageCollections, createAvatarAsset, validAvatarLibrary, type AvatarAsset, type AvatarAssetInput } from './harnessAvatarLibrary.ts';
+import { imageExtensionForMime, imageFingerprint, inspectedGeneratedImage, originalImageMimeType, validGeneratedImagePath, validLibraryImagePath, type GeneratedImageFile } from './harnessGeneratedImageIndex.ts';
 import { cleanAvatarPackPreferences, type AvatarPackPreferences } from './harnessAvatarPackPreferences.ts';
-import { emptySurfaceArtwork, validSurfaceArtwork, validSurfaceArtworkKey, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
+import { emptySurfaceArtwork, validSurfaceArtwork, validSurfaceArtworkKey, type SurfaceArtworkEntry, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
 import { searchableMessageText } from './harnessCompaction.ts';
 import { cleanWorkspaceSettings, workspaceSettings, type WorkspaceSettings } from './harnessSettings.ts';
 import type { ResponseDiagnostic } from './harnessResponseDiagnostics.ts';
 import { validateTasks, type TaskRecord } from './harnessTasks.ts';
 import { emptyAchievementLedger, incrementAchievementLedger, mergeAchievementLedger, type AchievementCounts, type AchievementLedger } from './harnessAchievements.ts';
+import { emptyAchievementSetLibrary, validAchievementSetLibrary, type AchievementSetLibrary } from './harnessAchievementSets.ts';
 import { journalDate, journalFact, validJournalDay, validJournalIndex, type JournalDay, type JournalIndex } from './harnessJournal.ts';
 import { defaultJournalStyleSettings, journalFactRevision, validJournalRenderings, validJournalStyleSettings, type JournalRendering, type JournalRenderings, type JournalStyleSettings } from './harnessJournalStyles.ts';
 import {
@@ -38,6 +40,7 @@ const avatarAssetPath = (id: string) => `${ROOT}/avatars/library/${id}.png`;
 const surfaceArtworkPath = `${ROOT}/artwork.json`;
 const tasksPath = `${ROOT}/tasks.json`;
 const achievementsPath = `${ROOT}/achievements.json`;
+const achievementSetsPath = `${ROOT}/achievement-sets.json`;
 const journalIndexPath = `${ROOT}/journal/index.json`;
 const journalDayPath = (date: string) => `${ROOT}/journal/days/${date}.json`;
 const journalStylePath = `${ROOT}/journal/styles.json`;
@@ -163,7 +166,9 @@ export class HarnessStore {
   private surfaceArtworkWrites: Promise<void> = Promise.resolve();
   private tasksWrites: Promise<void> = Promise.resolve();
   private achievementWrites: Promise<void> = Promise.resolve();
+  private achievementSetWrites: Promise<void> = Promise.resolve();
   private journalWrites: Promise<void> = Promise.resolve();
+  private linkedBrowserFolder: Promise<FileSystemDirectoryHandle | null> | null = null;
   constructor(workspaceId: string, folder: FileSystemDirectoryHandle | null) {
     validId(workspaceId);
     this.workspaceId = workspaceId;
@@ -207,8 +212,26 @@ export class HarnessStore {
   }
   async avatarAsset(id: string): Promise<Blob | null> {
     validId(id);
-    const path = avatarAssetPath(id);
-    if (!this.folder) return cacheRead<Blob>(cacheKey(this.workspaceId, path));
+    const localPath = avatarAssetPath(id);
+    if (this.folder) {
+      try { return await readBlob(this.folder, localPath); }
+      catch (error) { if (!isMissing(error)) throw error; }
+    } else {
+      const cached = await cacheRead<Blob>(cacheKey(this.workspaceId, localPath));
+      if (cached) return cached;
+    }
+    const linked = (await this.avatarLibrary()).find(asset => asset.id === id)?.path;
+    if (!linked) return null;
+    const path = linked;
+    if (!validLibraryImagePath(linked)) throw new Error('Saved image path is invalid.');
+    if (!this.folder) {
+      const cached = await cacheRead<Blob>(cacheKey(this.workspaceId, path));
+      if (cached) return cached;
+      const browserFolder = await (this.linkedBrowserFolder ||= browserFiles());
+      if (!browserFolder) return null;
+      try { return await readBlob(browserFolder, path); }
+      catch (error) { if (isMissing(error)) return null; throw error; }
+    }
     try { return await readBlob(this.folder, path); }
     catch (error) { if (isMissing(error)) return null; throw error; }
   }
@@ -235,6 +258,87 @@ export class HarnessStore {
     await this.updateAvatarLibrary(current => [asset, ...current]);
     return asset;
   }
+  /** Preserve the source file when a generated image cannot fit in the PNG copy library. */
+  async saveOriginalGeneratedAsset(image: Blob, input: AvatarAssetInput, sourceFolder: FileSystemDirectoryHandle | null = null): Promise<AvatarAsset> {
+    const mimeType = await originalImageMimeType(image);
+    if (!mimeType) throw new Error('The generated image has an unsupported format.');
+    const asset = createAvatarAsset({ ...input, source: 'generated' });
+    const path = `harness/images/originals/${asset.id}.${imageExtensionForMime(mimeType)}`;
+    const destination = this.folder || sourceFolder;
+    if (destination) await writeBlob(destination, path, image);
+    else await cacheWrite(cacheKey(this.workspaceId, path), image);
+    const linked = { ...asset, path, fileBytes: image.size, mimeType };
+    await this.updateAvatarLibrary(current => [linked, ...current]);
+    return linked;
+  }
+  /** Index generated files already on the workspace drive without copying their image bytes. */
+  async linkGeneratedImageFiles(files: GeneratedImageFile[], sourceFolder = this.folder): Promise<{ added: number; linked: number }> {
+    if (!sourceFolder) throw new Error('Connect the image folder first.');
+    const verified: GeneratedImageFile[] = [];
+    const duplicateTargets = new Map<string, string>();
+    const savedAssets = await this.avatarLibrary();
+    const savedFingerprints = new Map<string, string>();
+    for (const item of files) {
+      if (!validGeneratedImagePath(item.path)) continue;
+      try {
+        const image = await readBlob(sourceFolder, item.path);
+        const current = await inspectedGeneratedImage(image, item.path);
+        if (current && current.bytes === item.bytes && current.mimeType === item.mimeType) {
+          const candidate = { ...current,
+          ...(typeof item.prompt === 'string' ? { prompt: item.prompt.slice(0, 1200) } : {}),
+          ...(typeof item.model === 'string' ? { model: item.model.slice(0, 80) } : {}),
+          ...(typeof item.generatedAt === 'string' && Number.isFinite(Date.parse(item.generatedAt)) ? { generatedAt: new Date(item.generatedAt).toISOString() } : {}) };
+          verified.push(candidate);
+          if (candidate.prompt && candidate.model && candidate.generatedAt) {
+            const generatedAt = Date.parse(candidate.generatedAt);
+            const likelyMatches = savedAssets.filter(asset => asset.source === 'generated' && asset.prompt === candidate.prompt
+              && asset.tags.some(tag => tag.toLocaleLowerCase() === candidate.model!.toLocaleLowerCase())
+              && Math.abs(Date.parse(asset.createdAt) - generatedAt) <= 5 * 60_000
+              && (!asset.fileBytes || asset.fileBytes === candidate.bytes));
+            if (likelyMatches.length) {
+              const candidateFingerprint = await imageFingerprint(image);
+              for (const asset of likelyMatches) {
+                let fingerprint = savedFingerprints.get(asset.id);
+                if (!fingerprint) {
+                  const saved = await this.avatarAsset(asset.id);
+                  if (!saved || saved.size !== candidate.bytes) continue;
+                  fingerprint = await imageFingerprint(saved);
+                  savedFingerprints.set(asset.id, fingerprint);
+                }
+                if (fingerprint === candidateFingerprint) { duplicateTargets.set(candidate.path, asset.id); break; }
+              }
+            }
+          }
+        }
+      } catch (error) { if (!isMissing(error)) throw error; }
+    }
+    let added = 0;
+    let linked = 0;
+    await this.updateAvatarLibrary(current => {
+      const known = new Set(current.flatMap(asset => [asset.path, ...(asset.relatedPaths || [])].filter((path): path is string => !!path)));
+      const next = [...current];
+      for (const item of verified) {
+        if (known.has(item.path)) continue;
+        known.add(item.path);
+        const targetId = duplicateTargets.get(item.path);
+        const targetIndex = targetId ? next.findIndex(asset => asset.id === targetId) : -1;
+        if (targetIndex >= 0) {
+          const target = next[targetIndex];
+          if ((target.relatedPaths?.length || 0) < 256) {
+            next[targetIndex] = { ...target, relatedPaths: [...(target.relatedPaths || []), item.path] };
+            linked++;
+            continue;
+          }
+        }
+        const name = item.path.split('/').at(-1)!.replace(/\.[^.]+$/, '').replace(/-[a-f0-9]{8}$/i, '').replace(/[-_]+/g, ' ').trim();
+        next.unshift({ ...createAvatarAsset({ title: name || 'Generated image', tags: ['Generated', ...(item.model ? [item.model] : [])], source: 'generated', prompt: item.prompt }),
+          createdAt: item.generatedAt || item.modifiedAt, path: item.path, fileBytes: item.bytes, mimeType: item.mimeType });
+        added++;
+      }
+      return next;
+    });
+    return { added, linked };
+  }
   async updateAvatarAsset(id: string, title: string, tags: string[], favorite?: boolean, collections?: string[]): Promise<AvatarAsset> {
     validId(id);
     let updated: AvatarAsset | undefined;
@@ -255,9 +359,12 @@ export class HarnessStore {
     if (!validSurfaceArtwork(saved)) throw new Error('Saved artwork uses an unsupported format. Its file was left untouched.');
     return saved;
   }
-  async saveSurfaceArtwork(key: string, assetId: string | null, prompt: string): Promise<SurfaceArtworkMap> {
+  async saveSurfaceArtwork(key: string, assetId: string | null, prompt: string, retireModelKeys: string[] = []): Promise<SurfaceArtworkMap> {
     if (!validSurfaceArtworkKey(key)) throw new Error('Invalid artwork target.');
     if (prompt.length > 1200) throw new Error('Artwork prompt is too long.');
+    if (retireModelKeys.length > 100 || (retireModelKeys.length && !key.startsWith('model-family:'))
+      || retireModelKeys.some(oldKey => !/^model:(?:gguf|needle|image|speech|transcription|motion):[a-zA-Z0-9._-]{1,100}$/.test(oldKey)))
+      throw new Error('Invalid older model icon keys.');
     const persist = async () => {
       if (assetId) {
         validId(assetId);
@@ -266,9 +373,32 @@ export class HarnessStore {
       }
       const current = await this.surfaceArtwork();
       const items = { ...current.items };
+      for (const oldKey of retireModelKeys) delete items[oldKey];
       if (assetId) items[key] = { assetId, prompt: prompt.trim() };
       else delete items[key];
       const next: SurfaceArtworkMap = { version: 1, items };
+      await this.write(surfaceArtworkPath, next);
+      return next;
+    };
+    const task = this.surfaceArtworkWrites.catch(() => {}).then(async () => {
+      const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+      return locks ? locks.request(`local-agent-lab:artwork:${this.workspaceId}`, persist) : persist();
+    });
+    this.surfaceArtworkWrites = task.then(() => {}, () => {});
+    return task;
+  }
+  async saveSurfaceArtworkBatch(entries: Record<string, SurfaceArtworkEntry>): Promise<SurfaceArtworkMap> {
+    const rows = Object.entries(entries);
+    if (!rows.length || rows.length > 23 || rows.some(([key, entry]) => !validSurfaceArtworkKey(key)
+      || !entry || typeof entry.prompt !== 'string' || entry.prompt.length > 1200
+      || typeof entry.assetId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(entry.assetId)))
+      throw new Error('Invalid artwork batch.');
+    const persist = async () => {
+      const known = new Set((await this.avatarLibrary()).map(asset => asset.id));
+      for (const [, entry] of rows) if (!known.has(entry.assetId) || !(await this.avatarAsset(entry.assetId)))
+        throw new Error('An artwork image is missing from the image library.');
+      const current = await this.surfaceArtwork();
+      const next: SurfaceArtworkMap = { version: 1, items: { ...current.items, ...entries } };
       await this.write(surfaceArtworkPath, next);
       return next;
     };
@@ -811,6 +941,26 @@ export class HarnessStore {
     if (!saved) return emptyAchievementLedger();
     if (saved.version !== 1 || !saved.counts || typeof saved.counts !== 'object' || !saved.unlockedAt || typeof saved.unlockedAt !== 'object') throw new Error('Achievement record is damaged. Restore it from a backup before continuing.');
     return saved;
+  }
+  async achievementSets(): Promise<AchievementSetLibrary> {
+    const saved = await this.read<unknown>(achievementSetsPath);
+    if (saved === null) return emptyAchievementSetLibrary();
+    if (!validAchievementSetLibrary(saved)) throw new Error('Saved achievement sets use an unsupported format. The file was left untouched.');
+    return saved;
+  }
+  async updateAchievementSets(change: (current: AchievementSetLibrary) => AchievementSetLibrary): Promise<AchievementSetLibrary> {
+    const persist = async () => {
+      const next = change(await this.achievementSets());
+      if (!validAchievementSetLibrary(next)) throw new Error('Achievement set is incomplete or exceeds workspace limits.');
+      await this.write(achievementSetsPath, next);
+      return next;
+    };
+    const task = this.achievementSetWrites.catch(() => {}).then(async () => {
+      const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+      return locks ? locks.request(`local-agent-lab:achievement-sets:${this.workspaceId}`, persist) : persist();
+    });
+    this.achievementSetWrites = task.then(() => {}, () => {});
+    return task;
   }
   async updateAchievementLedger(observed: AchievementCounts, modelKeys: string[] = [], typeKeys: string[] = []): Promise<AchievementLedger> {
     const persist = async () => {

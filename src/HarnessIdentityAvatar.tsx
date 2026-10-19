@@ -25,11 +25,11 @@ export function useIdentityAvatarUrl(store: Pick<HarnessStore, 'identityAvatar'>
   return url;
 }
 
-export function useAvatarAssetUrl(store: Pick<HarnessStore, 'avatarAsset'> | null, id: string | undefined): string {
+export function useAvatarAssetUrl(store: Pick<HarnessStore, 'avatarAsset'> | null, id: string | undefined, skip = false): string {
   const [url, setUrl] = useState('');
   useEffect(() => {
     setUrl('');
-    if (!store || !id || !/^[a-zA-Z0-9-]{1,80}$/.test(id)) return;
+    if (!store || !id || skip || !/^[a-zA-Z0-9-]{1,80}$/.test(id)) return;
     let active = true;
     let objectUrl = '';
     void store.avatarAsset(id).then(blob => {
@@ -38,7 +38,7 @@ export function useAvatarAssetUrl(store: Pick<HarnessStore, 'avatarAsset'> | nul
       setUrl(objectUrl);
     }).catch(error => console.warn('Could not load avatar asset:', error));
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [store, id]);
+  }, [store, id, skip]);
   return url;
 }
 

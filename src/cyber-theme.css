@@ -366,6 +366,7 @@ body { background: #050914; }
   color: #b8fff2;
   background: #1b3949;
 }
+.harness-message-copy { margin-left: 0; }
 .harness-model-stamp-dialog pre {
   margin: 0 0 18px;
   padding: 14px;

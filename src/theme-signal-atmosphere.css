@@ -1,0 +1,147 @@
+/* Extra signal detail for the default theme. Decoration never blocks controls. */
+.harness[data-theme='cyberpunk'] .harness-brand-mark {
+  position: relative;
+  isolation: isolate;
+}
+.harness[data-theme='cyberpunk'] .harness-brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 1px solid #91fff05c;
+  border-radius: 14px 7px 14px 7px;
+  box-shadow: 0 0 19px #71f4e72c;
+  pointer-events: none;
+}
+
+.harness[data-theme='cyberpunk'] .harness-sidebar-signal {
+  border-color: #7af2e55c;
+  background: linear-gradient(90deg, #0e2b39, #1a2340);
+  box-shadow:
+    inset 0 1px #a6fff122,
+    0 0 26px #57e6df1b;
+}
+.harness[data-theme='cyberpunk'] .harness-sidebar-signal span {
+  background: linear-gradient(180deg, #a8fff2, #62d8df 60%, #957de7);
+  box-shadow: 0 0 9px #79f6e7a0;
+}
+
+.harness[data-theme='cyberpunk'] .harness-page .harness-heading {
+  overflow: hidden;
+  isolation: isolate;
+}
+.harness[data-theme='cyberpunk'] .harness-page .harness-heading::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  bottom: -42px;
+  width: 180px;
+  height: 180px;
+  border: 1px solid #86f6e833;
+  border-radius: 50%;
+  background: repeating-radial-gradient(
+    circle,
+    transparent 0 22px,
+    #9efcf014 23px 24px,
+    transparent 25px 38px
+  );
+  box-shadow:
+    0 0 0 22px #9c87ef0c,
+    inset 0 0 30px #80f6e91c;
+  opacity: 0.65;
+  pointer-events: none;
+}
+.harness[data-theme='cyberpunk'] .harness-page .harness-heading > * {
+  position: relative;
+  z-index: 1;
+}
+
+.harness[data-theme='cyberpunk'] .harness-card,
+.harness[data-theme='cyberpunk'] .harness-results button {
+  background-image:
+    linear-gradient(135deg, #81fff007 0, transparent 36%), linear-gradient(145deg, #172d42, #111c30);
+}
+.harness[data-theme='cyberpunk'] .harness-card:focus-within,
+.harness[data-theme='cyberpunk'] .harness-results button:focus-visible {
+  border-color: #8effe9;
+  box-shadow:
+    0 0 0 1px #8effe955,
+    0 0 26px #80f6e92b;
+}
+
+.harness[data-theme='cyberpunk']
+  :is(.model-catalog-table, .engine-table, .voice-table)
+  tbody
+  tr:hover
+  td:first-child {
+  box-shadow: inset 2px 0 #87f7e7;
+}
+.harness[data-theme='cyberpunk'] :is(.browser-model-tabs, .diagnostic-tabs) button.active {
+  border-color: #77e9dc;
+  box-shadow:
+    inset 0 -2px #89fff0,
+    0 7px 18px #5ceada20;
+}
+
+html[data-theme='cyberpunk']
+  dialog:is(
+    .harness-dialog,
+    .model-diagnostics-dialog,
+    .diagnostic-detail-dialog,
+    .model-limit-dialog,
+    .speech-diagnostics-dialog,
+    .transcription-dialog
+  ) {
+  border-color: #6d9eae;
+  background:
+    linear-gradient(135deg, #a4fff00c 0, transparent 26%), linear-gradient(145deg, #192c41, #0e1a2d 76%);
+  box-shadow:
+    0 28px 80px #000c,
+    0 0 0 1px #7df4e51a,
+    0 0 48px #6be7da1a;
+}
+html[data-theme='cyberpunk']
+  dialog:is(
+    .harness-dialog,
+    .model-diagnostics-dialog,
+    .diagnostic-detail-dialog,
+    .model-limit-dialog,
+    .speech-diagnostics-dialog,
+    .transcription-dialog
+  )::backdrop {
+  background: #020817d9;
+  backdrop-filter: blur(7px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .harness[data-theme='cyberpunk'] .harness-brand-mark::after {
+    animation: signal-brand-breathe 4.5s ease-in-out infinite;
+  }
+  .harness[data-theme='cyberpunk'] .harness-page .harness-heading::after {
+    animation: signal-reticle-turn 42s linear infinite;
+  }
+  .harness[data-theme='cyberpunk'] .harness-card,
+  .harness[data-theme='cyberpunk'] .harness-results button {
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+  }
+}
+@keyframes signal-brand-breathe {
+  50% {
+    opacity: 0.48;
+    box-shadow: 0 0 27px #71f4e755;
+  }
+}
+@keyframes signal-reticle-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .harness[data-theme='cyberpunk'] .harness-brand-mark::after,
+  .harness[data-theme='cyberpunk'] .harness-page .harness-heading::after {
+    animation: none;
+  }
+}

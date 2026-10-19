@@ -22,12 +22,14 @@ export function SurfaceArtworkButton({ store, title, assetId, onOpen }: {
   </button>;
 }
 
-export default function HarnessSurfaceArtwork({ store, surfaceKey, title, kind, entry, imageOptions, folder, onWrite, onSaved, onClose }: {
+export default function HarnessSurfaceArtwork({ store, surfaceKey, title, kind, entry, suggestedPrompt, replaceKeys = [], imageOptions, folder, onWrite, onSaved, onClose }: {
   store: HarnessStore;
   surfaceKey: string;
   title: string;
   kind: string;
   entry?: SurfaceArtworkEntry;
+  suggestedPrompt?: string;
+  replaceKeys?: string[];
   imageOptions: ImageConfig[];
   folder: FileSystemDirectoryHandle | null;
   onWrite: <T,>(action: () => Promise<T>) => Promise<T>;
@@ -37,7 +39,7 @@ export default function HarnessSurfaceArtwork({ store, surfaceKey, title, kind, 
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
-  const [prompt, setPrompt] = useState(entry?.prompt || suggestedSurfaceArtworkPrompt(title, kind));
+  const [prompt, setPrompt] = useState(suggestedPrompt || entry?.prompt || suggestedSurfaceArtworkPrompt(title, kind));
   const [assets, setAssets] = useState<AvatarAsset[]>([]);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,7 +56,7 @@ export default function HarnessSurfaceArtwork({ store, surfaceKey, title, kind, 
   }, [store]);
   const close = () => { if (!busy) { dialog.current?.close(); onClose(); } };
   const save = async (assetId: string | null, nextPrompt = prompt) => {
-    const updated = await onWrite(() => store.saveSurfaceArtwork(surfaceKey, assetId, nextPrompt.trim().slice(0, 1200)));
+    const updated = await onWrite(() => store.saveSurfaceArtwork(surfaceKey, assetId, nextPrompt.trim().slice(0, 1200), replaceKeys));
     onSaved(updated);
     return updated;
   };

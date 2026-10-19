@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HarnessStore } from '../src/harnessStore.ts';
-import { suggestedSurfaceArtworkPrompt, validSurfaceArtwork } from '../src/harnessSurfaceArtwork.ts';
+import { modelFamilyArtworkEntry, modelFamilyArtworkKey, suggestedSurfaceArtworkPrompt, validSurfaceArtwork } from '../src/harnessSurfaceArtwork.ts';
 import { createConversation } from '../src/harnessData.ts';
 
 class FileHandle {
@@ -45,6 +45,27 @@ test('catalog artwork uses stable keys and reusable workspace assets', async () 
   assert.ok(await reopened.avatarAsset(asset.id));
   await assert.rejects(reopened.saveSurfaceArtwork('model:gguf:bad', 'missing', ''), /no longer in the image library/);
   assert.equal(validSurfaceArtwork({ version: 1, items: { '../escape': { assetId: asset.id, prompt } } }), false);
+});
+
+test('model variants share a family icon and older per-model keys retire atomically', async () => {
+  const folder = new DirectoryHandle();
+  const store = new HarnessStore('family-artwork', folder);
+  const first = await store.saveAvatarAsset(new Blob(['first'], { type: 'image/png' }), { title: 'First icon', tags: ['Model'], source: 'uploaded' });
+  const second = await store.saveAvatarAsset(new Blob(['second'], { type: 'image/png' }), { title: 'Second icon', tags: ['Model'], source: 'uploaded' });
+  const oldKeys = ['model:gguf:qwen25-15b', 'model:gguf:qwen3-17b'];
+  const familyKey = modelFamilyArtworkKey('gguf', 'Qwen');
+  assert.equal(familyKey, 'model-family:gguf:qwen');
+  await store.saveSurfaceArtwork(oldKeys[0], first.id, 'Older prompt');
+  let map = await store.surfaceArtwork();
+  assert.equal(modelFamilyArtworkEntry(map, familyKey, oldKeys)?.assetId, first.id);
+  map = await store.saveSurfaceArtwork(familyKey, second.id, 'Family prompt', oldKeys);
+  assert.equal(modelFamilyArtworkEntry(map, familyKey, oldKeys)?.assetId, second.id);
+  assert.equal(map.items[oldKeys[0]], undefined);
+  const reopened = new HarnessStore('family-artwork', folder);
+  assert.equal(modelFamilyArtworkEntry(await reopened.surfaceArtwork(), familyKey, oldKeys)?.assetId, second.id);
+  map = await reopened.saveSurfaceArtwork(familyKey, null, '', oldKeys);
+  assert.equal(modelFamilyArtworkEntry(map, familyKey, oldKeys), undefined);
+  await assert.rejects(reopened.saveSurfaceArtwork('model:gguf:qwen3-17b', second.id, '', oldKeys), /Invalid older model icon keys/);
 });
 
 test('copied conversation keeps its icon and discarded copy removes only its reference', async () => {

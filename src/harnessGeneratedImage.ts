@@ -1,7 +1,10 @@
 /** Keep generated images at their original dimensions in the portable image library. */
 export async function imageLibraryPng(source: Blob): Promise<Blob> {
   if (!source.type.startsWith('image/') || !source.size || source.size > 50_000_000) throw new Error('Generated image is too large to save.');
-  if (source.type === 'image/png' && source.size <= 20_000_000) return source;
+  if (source.type === 'image/png') {
+    if (source.size <= 20_000_000) return source;
+    throw new Error('Generated PNG exceeds the 20 MB copy limit.');
+  }
   const bitmap = await createImageBitmap(source);
   try {
     if (!bitmap.width || !bitmap.height || bitmap.width > 4096 || bitmap.height > 4096 || bitmap.width * bitmap.height > 16_000_000)

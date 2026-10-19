@@ -4,7 +4,7 @@ import type { HarnessStore } from './harnessStore.ts';
 export type ImageUse = 'Generated' | 'Avatars' | 'Achievements' | 'Projects' | 'Journals' | 'Conversations' | 'Models' | 'Voices' | 'Other';
 export const IMAGE_USES: ImageUse[] = ['Generated', 'Avatars', 'Achievements', 'Projects', 'Journals', 'Conversations', 'Models', 'Voices', 'Other'];
 
-const surfaceUse = (key: string): ImageUse => key.startsWith('achievement:') ? 'Achievements'
+const surfaceUse = (key: string): ImageUse => key.startsWith('achievement:') || key.startsWith('achievement-set:') ? 'Achievements'
   : key.startsWith('project:') ? 'Projects'
   : key.startsWith('conversation:') ? 'Conversations'
   : key.startsWith('voice:') ? 'Voices'

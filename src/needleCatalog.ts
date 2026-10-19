@@ -1,4 +1,4 @@
-import { NEEDLE_CONTEXT_TOKENS, NEEDLE_MODEL_ASSETS, type NeedleVersion } from './needleAssets';
+import { NEEDLE_CONTEXT_TOKENS, NEEDLE_MODEL_ASSETS, type NeedleVersion } from './needleAssets.ts';
 
 export type NeedleAssetGroup = 'engine' | NeedleVersion;
 
