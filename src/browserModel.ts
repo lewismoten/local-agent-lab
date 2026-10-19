@@ -269,7 +269,6 @@ async function probeBrowserFeaturesInternal(path: string, onProgress: (progress:
   let thinkingDetail = '';
   let thinkingSpillover: ThinkingSpillover | null = null;
   let thinkingConclusion: { result: 'correct' | 'incorrect' | 'unscored'; answer?: string; detail: string } = { result: 'unscored', detail: 'No final numeric answer found.' };
-  let thinkingTraceForReport: ProbeTrace | undefined;
   let promptedSteps: { result: 'passed' | 'answer-correct-no-tags' | 'incorrect-answer' | 'inconclusive'; detail: string; answerAccuracy?: 'passed' | 'failed'; trace: ProbeTrace } | undefined;
   if (catalogModelForPath(path)?.thinking !== 'documented') {
     const promptedInput = {
@@ -328,8 +327,7 @@ async function probeBrowserFeaturesInternal(path: string, onProgress: (progress:
     emitResult({ key: 'thinking', status: thinkingResult === 'observed' ? 'passed' : thinkingTrace.error ? 'failed' : 'inconclusive', detail: thinkingDetail, trace: thinkingTrace, ...(thinkingSpillover ? { warning: 'thinking-spillover' as const } : {}) });
     emitResult({ key: 'thinkingAnswer', status: thinkingConclusion.result === 'correct' ? 'passed' : thinkingConclusion.result === 'incorrect' || thinkingTrace.error ? 'failed' : 'inconclusive', detail: thinkingConclusion.detail, trace: thinkingTrace, ...(thinkingSpillover ? { warning: 'thinking-spillover' as const } : {}) });
   }
-  thinkingTraceForReport = thinkingTrace;
-  return { text: { result: textResult, detail: textDetail, trace: textTrace }, tools: { result: toolsResult, detail: toolsDetail, argumentAccuracy: toolsArgumentAccuracy, trace: toolsTrace }, reasoningTask: { result: reasoningResult, detail: reasoningDetail, trace: reasoningTrace }, promptedSteps, thinking: { result: thinkingResult, detail: thinkingDetail, conclusion: thinkingConclusion, ...(thinkingSpillover ? { spillover: thinkingSpillover } : {}), trace: thinkingTraceForReport } };
+  return { text: { result: textResult, detail: textDetail, trace: textTrace }, tools: { result: toolsResult, detail: toolsDetail, argumentAccuracy: toolsArgumentAccuracy, trace: toolsTrace }, reasoningTask: { result: reasoningResult, detail: reasoningDetail, trace: reasoningTrace }, promptedSteps, thinking: { result: thinkingResult, detail: thinkingDetail, conclusion: thinkingConclusion, ...(thinkingSpillover ? { spillover: thinkingSpillover } : {}), trace: thinkingTrace } };
 }
 
 export async function unloadBrowserModel() {

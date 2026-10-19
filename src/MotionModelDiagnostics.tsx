@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { BROWSER_IMAGE_GROUPS, browserImageAssetsManager, browserImageModelLabel, getBrowserImageAssets, subscribeBrowserImageAssets, type BrowserImageModelGroup } from './browserImageAssets.ts';
-import { generateBrowserImage } from './browserImage.ts';
-import { browserImagePresetForGroup, IMAGE_PRESETS } from './imageGeneration.ts';
+import { browserImagePresetForGroup, generateImage, IMAGE_PRESETS } from './imageGeneration.ts';
 import { imageRunProvenance, saveImageOutput } from './imageProvenance.ts';
 import { saveDiagnosticJson } from './diagnosticReports.ts';
 import { framePngBlob, saveFrameSequenceZip } from './motionFrameExport.ts';
@@ -179,7 +178,7 @@ export default function MotionModelDiagnostics({ folder, model, projectId, proje
         if (first) image = first;
         else {
           setStage('Generating keyframe…');
-          image = await generateBrowserImage(prompt.trim(), aborter.signal, setStage, undefined, imageGroup, { seed: imageSeed });
+          image = await generateImage(IMAGE_PRESETS[browserImagePresetForGroup(imageGroup)], prompt.trim(), aborter.signal, setStage, undefined, folder, undefined, imageSeed);
           next.inputImageBackend = 'WebGPU';
           const sourcePath = `sources/generated/motion-first-frame-${checkedAt.replace(/[:.]/g, '-')}-${crypto.randomUUID()}.png`;
           const saved = await saveImageOutput(folder, image, IMAGE_PRESETS[browserImagePresetForGroup(imageGroup)], prompt.trim(), sourcePath, checkedAt, imageSeed);

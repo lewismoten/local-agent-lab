@@ -1,6 +1,7 @@
 import { showToast } from './toastStore.ts';
 import { modelDownloadManager } from './modelDownloadSession.ts';
 import { engineAssetFiles, engineDirectory, engineRoot, engineSavedBytes, maybeEngineFile, organizeEngineFiles } from './engineFolders.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 const PRISM_COMMIT = 'dd85c7b5d686fc6d2acc8fba005960e4bb6b5346';
 const prismUrl = (name: string) => `https://raw.githubusercontent.com/PrismML-Eng/Talk/${PRISM_COMMIT}/${name}`;
@@ -30,6 +31,7 @@ export const getPrismEngineDownload = () => state;
 export const subscribePrismEngineDownload = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const missing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 export async function maybeFile(dir: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  workspaceFileName(name);
   try { return await (await dir.getFileHandle(name)).getFile(); } catch (error) { if (missing(error)) return null; throw error; }
 }
 async function hash(file: Blob): Promise<string> {
@@ -37,10 +39,12 @@ async function hash(file: Blob): Promise<string> {
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
 }
 export async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: Blob | string) {
+  workspaceFileName(name);
   const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
   await writer.write(data); await writer.close();
 }
 export async function removeFile(dir: FileSystemDirectoryHandle, name: string) {
+  workspaceFileName(name);
   try { await dir.removeEntry(name); } catch (error) { if (!missing(error)) throw error; }
 }
 export async function validFile(dir: FileSystemDirectoryHandle, asset: Asset): Promise<File | null> {
@@ -74,6 +78,7 @@ async function throttle(bytes: number, signal: AbortSignal) {
 }
 class AssetIntegrityError extends Error {}
 async function transferAssetAttempt(dir: FileSystemDirectoryHandle, asset: Asset, baseBytes: number, signal: AbortSignal, onProgress: (bytes: number, label: string) => void, resume: boolean) {
+  workspaceFileName(asset.name);
   const recordName = `${asset.name}.download.json`;
   const record = await maybeFile(dir, recordName);
   const existing = await maybeFile(dir, asset.name);

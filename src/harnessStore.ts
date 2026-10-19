@@ -1,5 +1,6 @@
 import { hasWritableFolderPermission, readBlob, removeBlob, writeBlob } from './storage.ts';
-import { createAvatarAsset, validAvatarLibrary, type AvatarAsset, type AvatarAssetInput } from './harnessAvatarLibrary.ts';
+import { cleanImageCollections, createAvatarAsset, validAvatarLibrary, type AvatarAsset, type AvatarAssetInput } from './harnessAvatarLibrary.ts';
+import { cleanAvatarPackPreferences, type AvatarPackPreferences } from './harnessAvatarPackPreferences.ts';
 import { emptySurfaceArtwork, validSurfaceArtwork, validSurfaceArtworkKey, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
 import { searchableMessageText } from './harnessCompaction.ts';
 import { cleanWorkspaceSettings, workspaceSettings, type WorkspaceSettings } from './harnessSettings.ts';
@@ -32,6 +33,7 @@ const chunkIndexPath = (projectId: string, sessionId: string, group: number) => 
 type ChunkIndex = { version: 1; chunks: string[] };
 const memoryPath = `${ROOT}/memory.json`;
 const avatarLibraryPath = `${ROOT}/avatars/library.json`;
+const avatarPackPreferencesPath = `${ROOT}/avatars/pack-preferences.json`;
 const avatarAssetPath = (id: string) => `${ROOT}/avatars/library/${id}.png`;
 const surfaceArtworkPath = `${ROOT}/artwork.json`;
 const tasksPath = `${ROOT}/tasks.json`;
@@ -224,7 +226,7 @@ export class HarnessStore {
     return task;
   }
   async saveAvatarAsset(image: Blob, input: AvatarAssetInput): Promise<AvatarAsset> {
-    if (image.type !== 'image/png' || !image.size || image.size > 512_000) throw new Error('Avatar library images must be PNGs no larger than 500 KB.');
+    if (image.type !== 'image/png' || !image.size || image.size > 20_000_000) throw new Error('Image library files must be PNGs no larger than 20 MB.');
     if (input.originIdentityId) validId(input.originIdentityId);
     const asset = createAvatarAsset(input);
     const path = avatarAssetPath(asset.id);
@@ -233,14 +235,15 @@ export class HarnessStore {
     await this.updateAvatarLibrary(current => [asset, ...current]);
     return asset;
   }
-  async updateAvatarAsset(id: string, title: string, tags: string[]): Promise<AvatarAsset> {
+  async updateAvatarAsset(id: string, title: string, tags: string[], favorite?: boolean, collections?: string[]): Promise<AvatarAsset> {
     validId(id);
     let updated: AvatarAsset | undefined;
     await this.updateAvatarLibrary(current => {
       if (!current.some(asset => asset.id === id)) throw new Error('Avatar image is no longer in the library.');
       return current.map(asset => {
       if (asset.id !== id) return asset;
-      updated = { ...asset, title: title.trim().slice(0, 80) || asset.title, tags: cleanTags(tags, 12) };
+      updated = { ...asset, title: title.trim().slice(0, 80) || asset.title, tags: cleanTags(tags, 12),
+        ...(favorite !== undefined ? { favorite } : {}), ...(collections !== undefined ? { collections: cleanImageCollections(collections) } : {}) };
       return updated;
       });
     });
@@ -328,10 +331,16 @@ export class HarnessStore {
     if (!cleaned) throw new Error('Workspace settings use an unsupported format. The existing file was left untouched.');
     return cleaned;
   }
+  async avatarPackPreferences(): Promise<AvatarPackPreferences> {
+    return cleanAvatarPackPreferences(await this.read<unknown>(avatarPackPreferencesPath));
+  }
+  async saveAvatarPackPreferences(preferences: AvatarPackPreferences): Promise<void> {
+    await this.write(avatarPackPreferencesPath, cleanAvatarPackPreferences(preferences));
+  }
   async saveSettings(settings: WorkspaceSettings): Promise<void> {
     const cleaned = cleanWorkspaceSettings(settings);
     if (!cleaned) throw new Error('Invalid workspace settings.');
-    await this.write(settingsPath, workspaceSettings(cleaned.profiles, cleaned.selectedProfileId, cleaned.imageConfig, cleaned.compactionAt));
+    await this.write(settingsPath, workspaceSettings(cleaned.profiles, cleaned.selectedProfileId, cleaned.imageConfig, cleaned.compactionAt, cleaned.themeId, cleaned.customThemes));
   }
   async project(projectId: string): Promise<HarnessProject | null> {
     validId(projectId);

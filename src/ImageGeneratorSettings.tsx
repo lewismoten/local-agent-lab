@@ -3,6 +3,7 @@ import { CircleHelp } from 'lucide-react';
 import { generateImage, imageConfigured, IMAGE_PRESETS, type ImageConfig, type ImagePreset } from './imageGeneration';
 import { clearImageReady, isImageReady, markImageReady } from './imageSession';
 import { showCompletionToast } from './toastStore';
+import { openToastImagePreview } from './toastImagePreview.ts';
 import { browserImagePreviewDataUrl } from './browserImage';
 import { browserImageDefaultGuidance, browserImageDefaultSteps, browserImageOutputSize } from './browserImageAssets';
 import { inspectGreenLeafTestImage } from './imageTestQuality';
@@ -68,7 +69,7 @@ export default function ImageGeneratorSettings({ config, onChange, folder }: Pro
         if (!check.passed) throw new Error(`The test image decoded, but only ${check.greenPercent}% of its pixels were green.${config.preset === 'browser-tiny-q4' ? ' Try Tiny-SD FP16 for usable images.' : ' Review the preview before using this model.'}`);
       }
       markImageReady(config);
-      showCompletionToast(isReferenceImagePrompt(runPrompt) ? 'Image generator test complete.' : 'Image generation complete.', startedAt);
+      showCompletionToast(isReferenceImagePrompt(runPrompt) ? 'Image generator test complete.' : 'Image generation complete.', startedAt, 2000, { label: 'View image', onClick: () => openToastImagePreview(image, 'Generated image') });
     } catch (cause) { if (controller.signal.aborted) setPhase('Stopped.'); else setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (testController.current === controller) testController.current = null; setTesting(false); if (!controller.signal.aborted) setPhase(''); }
   }

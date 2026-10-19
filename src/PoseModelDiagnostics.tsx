@@ -100,7 +100,7 @@ export default function PoseModelDiagnostics({ folder, disabled, openRequest, on
     <button className="button secondary compact" type="button" disabled={!folder || disabled} onClick={() => dialog.current?.showModal()}>Inspect features</button>
     <dialog ref={dialog} className="model-limit-dialog motion-diagnostics-dialog" aria-labelledby="pose-diagnostics-title">
       <div className="provider-heading"><h2 id="pose-diagnostics-title">Pose Landmarker Full</h2><button className="button secondary compact" type="button" disabled={busy} onClick={() => dialog.current?.close()}>Close</button></div>
-      <p className="muted">Choose a photo or video. Video is sampled at 2 frames per second, up to 90 frames.</p>
+      <p className="muted">Detect existing poses in a photo or video; this does not generate new motion. A single photo cannot establish hidden limbs or future movement. Video is sampled at 2 frames per second, up to 90 frames.</p>
       <label className="field"><span>Photo or video</span><input type="file" accept="image/*,video/*" onChange={event => setSource(event.target.files?.[0] || null)}/></label>
       <div className="settings-actions"><button className="button primary compact" type="button" disabled={!source || busy} onClick={() => void run()}>{busy ? 'Analyzing…' : 'Detect poses'}</button>{busy && <button className="button danger compact" type="button" onClick={() => controller.current?.abort(new DOMException('Stopped by user.', 'AbortError'))}>Stop</button>}<button className="button secondary compact" type="button" disabled={!report || busy} onClick={() => void copyReport()}>Copy JSON</button></div>
       {stage && <p role="status">{stage}</p>}{error && <p role="alert" className="model-error">{error}</p>}

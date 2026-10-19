@@ -1,4 +1,6 @@
 import { parseProjectFiles, projectFiles, type Project } from './model.ts';
+import { assertBrowserStorageRoom } from './storageCapacity.ts';
+import { workspacePathParts } from './workspacePath.ts';
 
 const DB = 'rivers-of-memory';
 const STORE = 'handles';
@@ -122,11 +124,15 @@ async function directoryAt(root: FileSystemDirectoryHandle, parts: string[], cre
 }
 function missingEntry(error: unknown): boolean { return error instanceof DOMException && error.name === 'NotFoundError'; }
 export async function writeBlob(root: FileSystemDirectoryHandle, path: string, blob: Blob) {
-  const parts = path.split('/');
+  const parts = workspacePathParts(path);
   const name = parts.pop()!;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const dir = await directoryAt(root, parts, true);
+      let oldBytes = 0;
+      try { oldBytes = (await (await dir.getFileHandle(name)).getFile()).size; }
+      catch (error) { if (!missingEntry(error)) throw error; }
+      await assertBrowserStorageRoom(root, blob.size, oldBytes);
       const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
       await writer.write(blob);
       await writer.close();
@@ -138,7 +144,7 @@ export async function writeBlob(root: FileSystemDirectoryHandle, path: string, b
   }
 }
 export async function writeStream(root: FileSystemDirectoryHandle, path: string, produce: (writer: FileSystemWritableFileStream) => Promise<void>): Promise<void> {
-  const parts = path.split('/');
+  const parts = workspacePathParts(path);
   const name = parts.pop()!;
   const dir = await directoryAt(root, parts, true);
   let existed = true;
@@ -153,7 +159,7 @@ export async function writeStream(root: FileSystemDirectoryHandle, path: string,
   }
 }
 export async function removeBlob(root: FileSystemDirectoryHandle, path: string): Promise<void> {
-  const parts = path.split('/');
+  const parts = workspacePathParts(path);
   const name = parts.pop()!;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -183,21 +189,22 @@ export async function readProject(root: FileSystemDirectoryHandle): Promise<Proj
   return parseProjectFiles(await readTree(root));
 }
 export async function readBlob(root: FileSystemDirectoryHandle, path: string): Promise<File> {
-  const parts = path.split('/');
+  const parts = workspacePathParts(path);
   const name = parts.pop()!;
   const read = async () => (await (await directoryAt(root, parts, false)).getFileHandle(name)).getFile();
   try { return await read(); }
   catch (error) {
+    let failure = error;
     if (missingEntry(error) && directoryHandles.has(root)) {
       directoryHandles.delete(root);
       try { return await read(); }
-      catch (retryError) { error = retryError; }
+      catch (retryError) { failure = retryError; }
     }
-    if (path.startsWith('models/') && parts.length === 1 && name.toLowerCase().endsWith('.gguf') && error instanceof DOMException && error.name === 'NotFoundError') {
+    if (path.startsWith('models/') && parts.length === 1 && name.toLowerCase().endsWith('.gguf') && failure instanceof DOMException && failure.name === 'NotFoundError') {
       const { modelStorageDirectory } = await import('./modelFolders.ts');
       return (await (await modelStorageDirectory(root, name)).getFileHandle(name)).getFile();
     }
-    throw error;
+    throw failure;
   }
 }
 export function downloadProject(project: Project) {

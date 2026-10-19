@@ -43,10 +43,11 @@ const expected = files.filter(path => path !== 'coi-serviceworker.js');
 if (precache.length !== expected.length || precache.some((path, index) => path !== expected[index])) fail('the precache list does not match the artifact files.');
 
 const index = JSON.parse(await readFile(join(root, 'licenses/third-party-index.json'), 'utf8'));
-if (index.version !== 2 || !Array.isArray(index.packages) || !index.packages.length || !Array.isArray(index.development)) fail('the third-party notice index is empty or invalid.');
+if (index.version !== 3 || !Array.isArray(index.packages) || !index.packages.length || !Array.isArray(index.development)) fail('the third-party notice index is empty or invalid.');
+if (index.development.some(entry => !entry.purpose || entry.purpose.length < 30 || entry.purpose.length > 60)) fail('a build-tool purpose is missing.');
 const noticeText = await readFile(join(root, 'licenses/third-party-notices.txt'), 'utf8');
 for (const entry of index.packages) {
-  if (!entry.name || !entry.version || !entry.license || !entry.notices?.length || entry.notices.some(notice => !notice.text?.trim())) fail(`license text is missing for ${entry.name || 'an unnamed package'}.`);
+  if (!entry.name || !entry.version || !entry.license || !entry.purpose || entry.purpose.length < 30 || entry.purpose.length > 60 || !entry.notices?.length || entry.notices.some(notice => !notice.text?.trim())) fail(`license text or purpose is missing for ${entry.name || 'an unnamed package'}.`);
   if (!['direct', 'transitive'].includes(entry.relationship) || !entry.requiredBy?.length) fail(`dependency path is missing for ${entry.name || 'an unnamed package'}.`);
   if (!noticeText.includes(`${entry.name}@${entry.version}`)) fail(`the raw notice file omits ${entry.name}@${entry.version}.`);
 }

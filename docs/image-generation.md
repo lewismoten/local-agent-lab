@@ -1,14 +1,14 @@
 # Image generation
 
-The writing room's `/image` command and character portraits use the selected image generator. Choose a browser image model under **Local Models** and run **Inspect features**, or open **Image services** in AI profiles for an external provider and its test. Nothing is loaded by default. Test once per browser session before using it. Generated images are saved to the connected project folder.
+The writing room's `/image` command and character portraits use the selected image generator. Choose a browser image model under **Local Models** and run **Inspect features**, or open **Image services** in AI profiles for an external provider and its test. Nothing is loaded by default. Test once per browser session before using it. Generated images are saved to the active workspace.
 
 ## Browser image models
 
-Open **AI profiles → Engines** and download **ONNX image**, then open **Catalog** and choose an image model. The runtime, tokenizer, model components, and licenses are downloaded only on request to the connected working drive. Downloads can be paused and resumed, and the existing download speed setting applies. Keep each model folder together when moving the drive to another computer.
+Open **AI profiles → Engines** and download **ONNX image**, then open **Catalog** and choose an image model. The runtime, tokenizer, model components, and licenses are downloaded only on request to the active workspace. This can be browser storage or a connected drive. Downloads can be paused and resumed, and the existing download speed setting applies. Keep each model folder together when moving a drive to another computer.
 
 | Model | Approximate download | Working drive folder | Use |
 | --- | ---: | --- | --- |
-| Stable Diffusion 1.5 | 2.07 GB | `models/SD-1.5-ONNX/` | Established baseline for story images |
+| Stable Diffusion 1.5 | 2.07 GB | `models/SD-1.5-ONNX/` | Complete package exceeds the current 2 GB download cap; existing files are retained |
 | Tiny-SD Q4 | 0.64 GB | `models/Tiny-SD-Q4-ONNX/` | Smallest download; may produce gray pattern artifacts |
 | Tiny-SD FP16 | 1.00 GB | `models/Tiny-SD-FP16-ONNX/` | Higher precision variant; prefer when Q4 fails the image test |
 | SDXS DreamShaper | 0.88 GB | `models/SDXS-DreamShaper-ONNX/` | One-step 512×512 story image drafts |
@@ -16,6 +16,8 @@ Open **AI profiles → Engines** and download **ONNX image**, then open **Catalo
 | Supra2-IMG Mobile | 0.44 GB | `models/Supra2-IMG-Mobile-ONNX/` | Compact 256×256 drafts; English prompts |
 
 All six share `engines/ONNX-Image/`. Previously downloaded ONNX Runtime Web 1.22 files continue to run the original four models. Update the engine to 1.30 before using DreamShaper 8 LCM or Supra2. The Tiny-SD exports come from [cursedhelm's ONNX conversion of Segmind Tiny-SD](https://huggingface.co/cursedhelm/aderpy-deepdreamer-onnx). [SDXS DreamShaper](https://huggingface.co/skillsafeai/sdxs-512-dreamshaper-onnx-webgpu) has a separate one-step sampler and an Open RAIL++-M license; the saved folder also includes its base model's Open RAIL-M and TAESD decoder's MIT license. [DreamShaper 8 LCM](https://huggingface.co/skillsafeai/dreamshaper-8-lcm-onnx-webgpu) uses four LCM steps with no guidance. [Supra2-IMG Mobile](https://huggingface.co/mikhsol/Supra2-IMG-mobile-onnx) uses a T5 tokenizer and rectified-flow sampler; its Apache 2.0 license and NOTICE are saved with the model. The app downloads only components needed for text-to-image generation. Tiny-SD uses the source model's DPM++ scheduler; Stable Diffusion 1.5 uses its existing Euler path. **Inspect features** and **Test image** start with an editable green-leaf prompt. That reference prompt gets a basic color check; custom prompts generate a preview for visual review. Prompts are remembered per model in this browser, and generated images can be downloaded.
+
+See [visual model status](visual-model-status.md) for the current repeatable browser evidence and the complete-package limit, including the shared engine.
 
 Then select the matching browser image model under **Local Models** and run **Inspect features**. The test uses seed 42 so comparisons of settings and variants are repeatable; normal generations use a random seed. A successful reference test or decoded custom generation unlocks image generation for that browser session. Custom prompts do not change the catalog's reference diagnostic result. No browser-model prompt is sent to a server. This option requires WebGPU with the `shader-f16` feature and enough GPU memory to load the ONNX components. Supra2 produces 256×256 images; the others produce 512×512. Stable Diffusion and Tiny-SD default to 20 denoising steps with prompt strength 7.5; both can be adjusted in **Image services**. SDXS is fixed at one step and DreamShaper LCM at four steps, both without guidance. Supra2 defaults to 20 steps and prompt strength 3. The catalog shows default steps, not a model limit. Browser support and GPU memory vary by computer; the test is the readiness check.
 

@@ -38,7 +38,7 @@ export function identityAvatarPrompt(identity: Pick<HarnessIdentity, 'name' | 'f
 
 /** Normalize uploads and generated images to a compact, portable PNG. */
 export async function compactIdentityAvatar(source: Blob): Promise<Blob> {
-  if (!source.type.startsWith('image/') || !source.size || source.size > 10_000_000) throw new Error('Choose an image under 10 MB.');
+  if (!source.type.startsWith('image/') || !source.size || source.size > 20_000_000) throw new Error('Choose an image under 20 MB.');
   const bitmap = await createImageBitmap(source);
   try {
     const canvas = document.createElement('canvas');

@@ -72,3 +72,16 @@ test('saved avatar assets are reusable across identities and keep searchable tag
   assert.equal((await store.avatarLibrary())[0].title, 'Night guide');
   await assert.rejects(reopened.updateAvatarAsset('missing', 'No', []), /no longer/);
 });
+
+test('image library keeps a larger PNG, favorites, and named collections after reopening', async () => {
+  const folder = new MemoryDirectory();
+  const first = new HarnessStore('images', folder);
+  const image = new Blob([new Uint8Array(600_000)], { type: 'image/png' });
+  const asset = await first.saveAvatarAsset(image, { title: 'Landscape', source: 'generated', tags: ['Generated'] });
+  await first.updateAvatarAsset(asset.id, 'Landscape', asset.tags, true, ['Scenes', 'scenes', 'Reference']);
+  const reopened = new HarnessStore('images', folder);
+  const saved = (await reopened.avatarLibrary()).find(item => item.id === asset.id);
+  assert.equal(saved.favorite, true);
+  assert.deepEqual(saved.collections, ['scenes', 'Reference']);
+  assert.equal((await reopened.avatarAsset(asset.id)).size, 600_000);
+});

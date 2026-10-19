@@ -1,5 +1,6 @@
 import { ensureModelLicenseFiles } from './modelLicenses.ts';
 import { modelDownloadDirectory, modelFolderName, modelLogicalPath } from './modelFolders.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 export type DownloadProgress = { bytes: number; total: number; resumed: boolean };
 export type PartialModel = { name: string; url: string; bytes: number; total: number };
@@ -30,9 +31,11 @@ const contentRange = (value: string | null) => {
 };
 const isMissing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 const maybeFile = async (dir: FileSystemDirectoryHandle, name: string): Promise<File | null> => {
+  workspaceFileName(name);
   try { return await (await dir.getFileHandle(name)).getFile(); } catch (error) { if (isMissing(error)) return null; throw error; }
 };
 async function saveRecord(dir: FileSystemDirectoryHandle, name: string, record: DownloadRecord) {
+  workspaceFileName(name);
   const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
   await writer.write(JSON.stringify(record, null, 2));
   await writer.close();
@@ -62,6 +65,7 @@ export async function listPartialModels(folder: FileSystemDirectoryHandle): Prom
   return results;
 }
 export async function discardPartialModel(folder: FileSystemDirectoryHandle, modelName: string) {
+  workspaceFileName(modelName);
   const dir = await folder.getDirectoryHandle('models', { create: true });
   const nested = await dir.getDirectoryHandle(modelFolderName(modelName)).catch(error => { if (isMissing(error)) return null; throw error; });
   for (const location of [dir, nested].filter((item): item is FileSystemDirectoryHandle => !!item)) for (const name of [modelName, `${modelName}.download.json`]) {

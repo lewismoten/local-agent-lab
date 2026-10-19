@@ -3,6 +3,7 @@ import { showToast } from './toastStore.ts';
 import { getModelDownload } from './modelDownloadSession.ts';
 import { browserImageTotal } from './browserImageAssets.ts';
 import { VISUAL_PACKAGE_LIMIT_BYTES, visualPackageLimitMessage } from './visualLimit.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 export const MOTION_MODEL_IDS = ['depth', 'rife', 'pose', 'vector', 'tripo'] as const;
 export type MotionModel = typeof MOTION_MODEL_IDS[number];
@@ -28,7 +29,7 @@ export const MOTION_MODELS: Record<MotionAssetId, { label: string; path: string;
     ],
   },
   pose: {
-    label: 'Pose Landmarker Full', path: 'models/Pose-Landmarker-Full', purpose: 'Estimates 33 body landmarks from images and video.',
+    label: 'Pose Landmarker Full', path: 'models/Pose-Landmarker-Full', purpose: 'Detects body landmarks in photos and sampled video; it does not generate motion.',
     source: 'https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker', license: 'Apache 2.0',
     assets: [mediaPipeLicense, { name: 'pose_landmarker_full.task', url: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task', bytes: 9398198, sha256: '5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1' }],
   },
@@ -85,6 +86,7 @@ export async function motionDirectory(folder: FileSystemDirectoryHandle, id: Mot
   return root.getDirectoryHandle(childName, { create });
 }
 async function existing(dir: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  workspaceFileName(name);
   try { return await (await dir.getFileHandle(name)).getFile(); }
   catch (error) { if (error instanceof DOMException && error.name === 'NotFoundError') return null; throw error; }
 }

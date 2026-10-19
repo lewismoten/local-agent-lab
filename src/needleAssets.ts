@@ -1,6 +1,7 @@
 import { showToast } from './toastStore.ts';
 import { type Asset, maybeFile, removeFile, savedBytes, transferAsset, validFile, writeFile } from './prismEngine.ts';
 import { engineAssetFiles, engineDirectory, engineRoot, engineSavedBytes, organizeEngineFiles } from './engineFolders.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 const npm = (name: string) => `https://cdn.jsdelivr.net/npm/needle-rs@0.3.1/${name}`;
 const original = (name: string) => `https://huggingface.co/Abdalrahman/needle-rs-safetensors/resolve/658f8c6f80a28ed759961c8b70f34c0d5cb40fe1/${name}`;
@@ -64,6 +65,7 @@ async function modelFiles(folder: FileSystemDirectoryHandle, version: NeedleVers
   return { files: legacyFiles.length && legacyFiles.every(Boolean) ? legacyFiles as File[] : null, present, saved: Math.max(nestedSaved, legacySaved), legacy: true, invalid };
 }
 async function copyFile(source: File, target: FileSystemDirectoryHandle, name: string) {
+  workspaceFileName(name);
   const writer = await (await target.getFileHandle(name, { create: true })).createWritable();
   try { await source.stream().pipeTo(writer); }
   catch (error) { await writer.abort().catch(() => {}); throw error; }

@@ -62,7 +62,7 @@ try {
   })()`);
   await waitFor(`(async () => { const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace(); const record = await store.achievementLedger(); return !!record.unlockedAt['first-image'] && record.counts.generatedArtwork > ${imagesBefore}; })()`, 'generated image milestone');
   await waitFor("document.querySelector('.harness-achievements-summary strong')?.textContent?.includes('/ 23')", 'achievement cards');
-  await evaluate("[...document.querySelectorAll('.harness-achievement-card')].find(card => card.textContent.includes('First contact')).querySelector('.harness-surface-artwork-button').click(); true");
+  await evaluate("[...document.querySelectorAll('.harness-achievement-card')].find(card => card.textContent.includes('First contact')).querySelector('button.harness-achievement-symbol').click(); true");
   await waitFor("document.querySelector('.harness-surface-artwork-dialog')?.open", 'achievement icon editor');
   await evaluate(`(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
@@ -75,7 +75,9 @@ try {
   })()`);
   await waitFor("(async () => { const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace(); return !!(await store.surfaceArtwork()).items['achievement:first-conversation']?.assetId; })()", 'saved achievement icon');
   await evaluate("document.querySelector('.harness-surface-artwork-dialog .harness-dialog-actions button').click(); location.reload(); true");
-  await waitFor("!![...document.querySelectorAll('.harness-achievement-card')].find(card => card.textContent.includes('First contact'))?.querySelector('.harness-surface-artwork-button img')", 'icon after reload');
+  await waitFor("!![...document.querySelectorAll('.harness-achievement-card')].find(card => card.textContent.includes('First contact'))?.querySelector('.harness-achievement-symbol img')", 'card image after reload');
+  const badge = await evaluate("(() => { const card = [...document.querySelectorAll('.harness-achievement-card')].find(item => item.textContent.includes('First contact')); return { image: !!card.querySelector('.harness-achievement-symbol img'), emoji: card.querySelector('.harness-achievement-symbol')?.textContent?.trim() || '', duplicate: !!card.querySelector('.harness-surface-artwork-button') }; })()");
+  if (!badge.image || badge.emoji || badge.duplicate) throw new Error(`Achievement image did not replace its emoji: ${JSON.stringify(badge)}`);
   await call('Emulation.setDeviceMetricsOverride', { width: 414, height: 896, deviceScaleFactor: 1, mobile: true });
   const fit = await evaluate("({ body: document.documentElement.scrollWidth, viewport: innerWidth, cards: document.querySelectorAll('.harness-achievement-card').length })");
   if (fit.body > fit.viewport + 2 || fit.cards !== 23) throw new Error(`Mobile achievements layout failed: ${JSON.stringify(fit)}`);

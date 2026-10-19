@@ -1,5 +1,6 @@
 import decompressStream from 'streaming-bz2-decompress';
 import { SHERPA_ARCHIVE_NAME, SHERPA_EXTRACTED_ASSETS } from './transcriptionManifest.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 const decoder = new TextDecoder();
 const prefix = 'sherpa-onnx-wasm-simd-v1.12.32-en-asr-zipformer/';
@@ -7,6 +8,8 @@ const prefix = 'sherpa-onnx-wasm-simd-v1.12.32-en-asr-zipformer/';
 // Consume the verified upstream tar.bz2 a block at a time. Only the four pinned
 // runtime files are written; the upstream demo page and scripts are ignored.
 export async function extractSherpaArchive(folder: FileSystemDirectoryHandle, modelDir: FileSystemDirectoryHandle, signal: AbortSignal) {
+  workspaceFileName(SHERPA_ARCHIVE_NAME);
+  SHERPA_EXTRACTED_ASSETS.forEach(asset => workspaceFileName(asset.name));
   const archive = await (await modelDir.getFileHandle(SHERPA_ARCHIVE_NAME)).getFile();
   const engineRoot = await folder.getDirectoryHandle('engines', { create: true });
   const engineDir = await engineRoot.getDirectoryHandle('Sherpa-ONNX-ASR', { create: true });

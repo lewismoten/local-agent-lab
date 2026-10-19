@@ -10,6 +10,7 @@ import { suggestedSurfaceArtworkPrompt } from './harnessSurfaceArtwork.ts';
 import { generateImage, type ImageConfig } from './imageGeneration.ts';
 import { withModelLease } from './harnessLease.ts';
 import { showCompletionToast } from './toastStore.ts';
+import { openToastImagePreview } from './toastImagePreview.ts';
 import './harnessSurfaceArtwork.css';
 
 export function SurfaceArtworkButton({ store, title, assetId, onOpen }: {
@@ -109,7 +110,7 @@ export default function HarnessSurfaceArtwork({ store, surfaceKey, title, kind, 
       setAssets(current => [asset, ...current]);
       await save(asset.id, request);
       setProgress('Icon saved.');
-      showCompletionToast(`${title} icon ready.`, started);
+      showCompletionToast(`${title} icon ready.`, started, 2000, { label: 'View icon', onClick: () => openToastImagePreview(compact, `${title} icon`) });
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (abort.current === controller) abort.current = null; setBusy(false); }
   };

@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "Local Agent Lab",
+  "short_name": "Agent Lab",
+  "description": "A private, portable workspace for chat, creative projects, and local AI models.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#060913",
+  "theme_color": "#050916",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "./screenshots/desktop.png", "sizes": "1440x810", "type": "image/png", "form_factor": "wide", "label": "Desktop writing workspace" },
+    { "src": "./screenshots/mobile.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow", "label": "Mobile writing workspace" }
+  ],
+  "shortcuts": [
+    { "name": "Chat", "url": "./#/chat" },
+    { "name": "Models", "url": "./#/models" }
+  ]
+}

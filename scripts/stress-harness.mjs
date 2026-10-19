@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { HarnessStore } from '../src/harnessStore.ts';
 import { chunkSearchBits, createConversation, MESSAGE_CHUNK_SIZE } from '../src/harnessData.ts';
 import { compactConversation } from '../src/harnessContext.ts';
-import { readBlob, writeBlob } from '../src/storage.ts';
+import { writeBlob } from '../src/storage.ts';
 
 const numberArg = (name, fallback) => {
   const index = process.argv.indexOf(name);

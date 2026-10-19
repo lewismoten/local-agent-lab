@@ -1,4 +1,5 @@
 import type { Asset } from './prismEngine.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 export type EngineGroup = 'Wllama' | 'PrismML' | 'Needle';
 const missing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
@@ -7,10 +8,12 @@ export async function engineRoot(folder: FileSystemDirectoryHandle, create = fal
   return create ? folder.getDirectoryHandle('engines', { create: true }) : folder.getDirectoryHandle('engines');
 }
 export async function engineDirectory(folder: FileSystemDirectoryHandle, group: EngineGroup, create = false) {
+  if (!['Wllama', 'PrismML', 'Needle'].includes(group)) throw new TypeError('Unknown engine folder.');
   const root = await engineRoot(folder, create);
   return create ? root.getDirectoryHandle(group, { create: true }) : root.getDirectoryHandle(group);
 }
 export async function engineDirectories(folder: FileSystemDirectoryHandle, group: EngineGroup) {
+  if (!['Wllama', 'PrismML', 'Needle'].includes(group)) throw new TypeError('Unknown engine folder.');
   let root: FileSystemDirectoryHandle;
   try { root = await engineRoot(folder); }
   catch (error) { if (missing(error)) return [] as FileSystemDirectoryHandle[]; throw error; }
@@ -18,6 +21,7 @@ export async function engineDirectories(folder: FileSystemDirectoryHandle, group
   catch (error) { if (missing(error)) return [root]; throw error; }
 }
 export async function maybeEngineFile(folder: FileSystemDirectoryHandle, group: EngineGroup, name: string): Promise<File | null> {
+  workspaceFileName(name);
   for (const dir of await engineDirectories(folder, group)) {
     try { return await (await dir.getFileHandle(name)).getFile(); }
     catch (error) { if (!missing(error)) throw error; }
@@ -35,6 +39,7 @@ export async function engineAssetFiles(folder: FileSystemDirectoryHandle, group:
   }));
 }
 export async function engineSavedBytes(folder: FileSystemDirectoryHandle, group: EngineGroup, assets: readonly Asset[]) {
+  assets.forEach(asset => workspaceFileName(asset.name));
   const dirs = await engineDirectories(folder, group);
   let total = 0;
   for (const asset of assets) {
@@ -51,6 +56,7 @@ async function digest(file: File) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()));
 }
 async function copyVerified(source: File, target: FileSystemDirectoryHandle, name: string) {
+  workspaceFileName(name);
   const writer = await (await target.getFileHandle(name, { create: true })).createWritable();
   await source.stream().pipeTo(writer);
   const copied = await (await target.getFileHandle(name)).getFile();
@@ -59,6 +65,7 @@ async function copyVerified(source: File, target: FileSystemDirectoryHandle, nam
   if (before.some((byte, index) => byte !== after[index])) throw new Error(`Could not verify ${name} after moving it.`);
 }
 export async function legacyEngineFileCount(folder: FileSystemDirectoryHandle, names: readonly string[]) {
+  names.forEach(workspaceFileName);
   let root: FileSystemDirectoryHandle;
   try { root = await engineRoot(folder); }
   catch (error) { if (missing(error)) return 0; throw error; }
@@ -70,6 +77,7 @@ export async function legacyEngineFileCount(folder: FileSystemDirectoryHandle, n
   return count;
 }
 export async function organizeEngineFiles(folder: FileSystemDirectoryHandle, group: EngineGroup, assets: readonly Asset[], queueFile: string, onProgress?: (name: string) => void) {
+  [...assets.map(asset => asset.name), queueFile].forEach(workspaceFileName);
   const root = await engineRoot(folder, true);
   const names = [...assets.flatMap(asset => [asset.name, `${asset.name}.download.json`]), queueFile];
   const sourceFiles: { name: string; file: File }[] = [];

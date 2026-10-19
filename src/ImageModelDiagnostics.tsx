@@ -6,6 +6,7 @@ import { recordCapability } from './capabilityLedger';
 import { saveDiagnosticJson } from './diagnosticReports';
 import { inspectGreenLeafTestImage } from './imageTestQuality';
 import { showCompletionToast, showToast } from './toastStore';
+import { openToastImagePreview } from './toastImagePreview.ts';
 import { clearImageReadyForPreset, markImageReady } from './imageSession';
 import { IMAGE_PRESETS, browserImagePresetForGroup, generateImage, type ImageConfig } from './imageGeneration';
 import { imageRunProvenance, saveImageOutput } from './imageProvenance.ts';
@@ -93,7 +94,7 @@ export default function ImageModelDiagnostics({ group, folder, imageConfig, disa
       if (passed && imageConfig.preset === preset) markImageReady(imageConfig);
       if (!passed) clearImageReadyForPreset(preset);
       if (reference) await recordCapability(folder, path, label, 'imageGeneration', passed ? 'passed' : 'failed', detail, browserImageTotal(group));
-      if (passed) showCompletionToast(`${label} ${reference ? 'image test' : 'image generation'} complete.`, started);
+      if (passed) showCompletionToast(`${label} ${reference ? 'image test' : 'image generation'} complete.`, started, 2000, { label: 'View image', onClick: () => openToastImagePreview(image, `${label} result`) });
       else showToast(reference ? `${label} image test did not match the prompt.` : `${label} image generation failed.`, 'error');
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);

@@ -16,4 +16,6 @@ VTracer uses [the published npm WebAssembly build](https://www.npmjs.com/package
 
 Pose Landmarker uses [Google's versioned Full task bundle](https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker) and the pinned [MediaPipe Vision npm runtime](https://www.npmjs.com/package/@mediapipe/tasks-vision/v/1.1.1), with Apache 2.0 terms saved in both folders. Google states that image and video input is processed on device; its [privacy notice](https://developers.google.com/edge/mediapipe/solutions/tasks#mediapipe_tasks_privacy_notice) describes MediaPipe usage metrics. The saved JSON contains frame timestamps and both coordinate systems, ready for later skeleton drawing, smoothing, and rig retargeting.
 
+Pose Landmarker detects existing body positions in a photo or sampled video. This is detection and tracking, not pose or motion generation. A single photo provides one observed view; landmarks behind the person and any future movement are estimates or unknown. The saved points do not include a rig, animation, or a verified body shape.
+
 The TripoSR export is [derived from MIT-licensed TripoSR](https://github.com/VAST-AI-Research/TripoSR) and includes an [Apache 2.0 DINO encoder](https://github.com/facebookresearch/dino). Both license texts and the export's model card are saved beside the ONNX files before the weights are downloaded.

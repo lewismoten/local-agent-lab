@@ -32,7 +32,6 @@ class MemoryDirectory {
   }
 }
 
-const indexPath = 'harness/journal/index.json';
 const dayPath = date => `harness/journal/days/${date}.json`;
 const message = (id, content, createdAt, role = 'user', toolEvents = []) => ({ id, role, content, createdAt, toolEvents });
 

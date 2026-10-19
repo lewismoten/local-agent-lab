@@ -102,7 +102,7 @@ export async function compactConversation(meta: ConversationMeta, active: Harnes
   const transcript = active.map(message => `${message.role.toUpperCase()}: ${message.content}${toolActivityText(message.toolEvents) ? `\nTool actions: ${toolActivityText(message.toolEvents)}` : ''}`).join('\n\n');
   const prior = meta.segments.at(-1);
   let summary = '', carryForward = '', title = fallbackTitle(active), tags = fallbackTags(transcript), modelChapterDecision: boolean | null = null;
-  let partSummaries: string[] = [];
+  const partSummaries: string[] = [];
   if (config?.model) {
     try {
       const capacity = config.provider === 'browser' ? browserContextWindow(config.model, config.contextWindow) : config.contextWindow;

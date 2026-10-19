@@ -10,7 +10,8 @@ export default function ToastViewport() {
     {toasts.slice(0, 4).map(toast => <div className={`toast toast-${toast.kind}`} role={toast.kind === 'error' ? 'alert' : 'status'} key={toast.id}>
       {toast.kind === 'error' ? <AlertCircle size={17}/> : toast.kind === 'info' ? <Info size={17}/> : <CheckCircle2 size={17}/>}
       <span>{toast.message}</span>
-      <button type="button" aria-label="Dismiss notification" onClick={() => dismissToast(toast.id)}><X size={15}/></button>
+      {toast.action && <button type="button" className="toast-action" onClick={() => { dismissToast(toast.id); toast.action?.onClick(); }}>{toast.action.label}</button>}
+      <button type="button" className="toast-dismiss" aria-label="Dismiss notification" onClick={() => dismissToast(toast.id)}><X size={15}/></button>
     </div>)}
   </div>;
 }

@@ -16,7 +16,7 @@ import ToastViewport from './ToastViewport';
 import TooltipLayer from './TooltipLayer';
 import ProviderSettings from './ProviderSettings';
 import { extractText } from './extract';
-import { acceptSourceFindings, emptyStoryGraph, makeBook, makeChapter, markAllBooks, markChapters, newProject, now, reconcileChanges, uid, type Book, type Chapter, type Character, type ContinuityReport, type Format, type Influence, type Project, type Source, type Stage, type StoryGraph, type WorldNote } from './model';
+import { acceptSourceFindings, assertProjectWorkspacePaths, emptyStoryGraph, makeBook, makeChapter, markAllBooks, markChapters, newProject, now, reconcileChanges, uid, type Book, type Chapter, type Character, type ContinuityReport, type Format, type Influence, type Project, type Source, type Stage, type StoryGraph, type WorldNote } from './model';
 import SourceAnalysisPanel from './SourceAnalysisPanel';
 import ModelTestDialog from './ModelTestDialog';
 import { useRoute, type RouteView } from './router';
@@ -334,6 +334,7 @@ export default function App() {
   async function importSnapshot(file: File) {
     const value = JSON.parse(await file.text()) as Project;
     if (value.schemaVersion !== 1 || !Array.isArray(value.books)) throw new Error('Choose a valid story-project.json export.');
+    assertProjectWorkspacePaths(value);
     setProject({ ...value, reviews: value.reviews || [], storyGraph: value.storyGraph || emptyStoryGraph() }); setDirty(true); flash('Project snapshot imported. Sync it to save separate files.');
   }
   async function uploadSources(files: FileList | null) {

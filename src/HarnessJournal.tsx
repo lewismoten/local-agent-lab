@@ -12,6 +12,7 @@ import { ensureBrowserModelReady } from './modelSession.ts';
 import JournalStyleGallery from './JournalStyleGallery.tsx';
 import { JOURNAL_STYLES, defaultJournalStyleSettings, effectiveJournalIconPrompt, effectiveJournalPrompt, journalArtworkPrompt, journalFactRevision, journalStyleRequest, type JournalRenderings, type JournalStyleId, type JournalStyleSettings } from './harnessJournalStyles.ts';
 import { showCompletionToast, showToast } from './toastStore.ts';
+import { openToastImagePreview } from './toastImagePreview.ts';
 import type { HarnessAgent, HarnessProject } from './harnessData.ts';
 import { journalTarget, journalTopics, type JournalDay, type JournalIndex } from './harnessJournal.ts';
 import type { ConversationMeta } from './harnessData.ts';
@@ -157,7 +158,7 @@ export default function HarnessJournal({ store, projects, agents, modelConfig, i
       }));
       setRenderings(saved);
       setStyleProgress('Entry saved.');
-      showCompletionToast('Journal entry ready.', startedAt);
+      showCompletionToast('Journal entry ready.', startedAt, 2000, { label: 'View entry', onClick: () => { location.hash = '/journal'; } });
     } catch (cause) {
       if (controller.signal.aborted) setStyleProgress('Stopped. Previous entry remains available.');
       else setError(cause instanceof Error ? cause.message : String(cause));
@@ -195,10 +196,10 @@ export default function HarnessJournal({ store, projects, agents, modelConfig, i
         }
       }, controller.signal);
       setStyleProgress(controller.signal.aborted ? `Stopped · ${completed} icons saved` : `${completed} icons ready`);
-      if (controller.signal.aborted) showToast(`Journal icon generation stopped. ${completed} saved.`);
-      else showCompletionToast(`${completed} journal icon${completed === 1 ? '' : 's'} ready.`, startedAt);
+      if (controller.signal.aborted) showToast(`Journal icon generation stopped. ${completed} saved.`, 'success', { label: 'View icons', onClick: () => { location.hash = '/journal'; } });
+      else showCompletionToast(`${completed} journal icon${completed === 1 ? '' : 's'} ready.`, startedAt, 2000, { label: 'View icons', onClick: () => { location.hash = '/journal'; } });
     } catch (cause) {
-      if (controller.signal.aborted) showToast(`Journal icon generation stopped. ${completed} saved.`);
+      if (controller.signal.aborted) showToast(`Journal icon generation stopped. ${completed} saved.`, 'success', { label: 'View icons', onClick: () => { location.hash = '/journal'; } });
       else setError(cause instanceof Error ? cause.message : String(cause));
     } finally { if (iconsAbort.current === controller) iconsAbort.current = null; setIconBusy(false); }
   }
@@ -232,7 +233,7 @@ export default function HarnessJournal({ store, projects, agents, modelConfig, i
       setArtworkLibrary(current => [asset, ...current]);
       setRenderings(await onWrite(() => store.saveJournalArtwork(date, asset.id, prompt)));
       setStyleProgress('Artwork saved.');
-      showCompletionToast('Journal artwork ready.', startedAt);
+      showCompletionToast('Journal artwork ready.', startedAt, 2000, { label: 'View artwork', onClick: () => openToastImagePreview(compact, `Journal artwork · ${date}`) });
     } catch (cause) {
       if (controller.signal.aborted) setStyleProgress('Artwork stopped.');
       else setError(cause instanceof Error ? cause.message : String(cause));

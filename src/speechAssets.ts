@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { modelDownloadManager } from './modelDownloadSession.ts';
 import { showToast } from './toastStore.ts';
 import { CHATTERBOX_ENGINE_ASSETS, KOKORO_ENGINE_ASSETS, OPENVOICE_ENGINE_ASSETS, QWEN_TTS_ENGINE_ASSETS, SPEECH_ENGINE_ASSETS, SPEECH_MODELS, speechModel, type SpeechAsset, type SpeechModelId } from './speechManifest.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 export type SpeechGroup = 'engine' | 'kokoro_engine' | 'chatterbox_engine' | 'qwen_engine' | 'openvoice_engine' | SpeechModelId;
 type State = { folder: FileSystemDirectoryHandle | null; active: SpeechGroup | null; queue: SpeechGroup[]; paused: boolean; checked: Record<SpeechGroup, boolean>; installed: Record<SpeechGroup, boolean>; saved: Record<SpeechGroup, number>; checkErrors: Partial<Record<SpeechGroup, string>>; current: string; error: string; revision: number };
@@ -20,6 +21,7 @@ export async function speechDirectory(folder: FileSystemDirectoryHandle, group: 
 }
 const absent = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 async function maybeFile(dir: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  workspaceFileName(name);
   try { return await (await dir.getFileHandle(name)).getFile(); }
   catch (error) { if (absent(error)) return null; throw error; }
 }
@@ -29,6 +31,7 @@ async function digest(file: Blob) {
   return [...hash.digest()].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 async function writeText(dir: FileSystemDirectoryHandle, name: string, value: string) {
+  workspaceFileName(name);
   const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
   await writer.write(value); await writer.close();
 }
@@ -75,6 +78,7 @@ async function throttle(bytes: number, signal: AbortSignal) {
   }
 }
 async function transfer(dir: FileSystemDirectoryHandle, group: SpeechGroup, asset: SpeechAsset, base: number, signal: AbortSignal) {
+  workspaceFileName(asset.name);
   if (await verified(dir, asset)) return;
   const prior = await maybeFile(dir, asset.name);
   const resumable = asset.url.startsWith('https://huggingface.co/');

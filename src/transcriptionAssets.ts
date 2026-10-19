@@ -3,6 +3,7 @@ import { modelDownloadManager } from './modelDownloadSession.ts';
 import { showToast } from './toastStore.ts';
 import { SHERPA_ARCHIVE_NAME, SHERPA_EXTRACTED_ASSETS, TRANSCRIPTION_MODELS, transcriptionAssets, transcriptionModel, transcriptionTotal, type TranscriptionAsset, type TranscriptionKind } from './transcriptionManifest.ts';
 import { extractSherpaArchive } from './sherpaArchive.ts';
+import { workspacePathParts } from './workspacePath.ts';
 type State = { folder: FileSystemDirectoryHandle | null; active: TranscriptionKind | null; queue: TranscriptionKind[]; paused: boolean; installed: Record<TranscriptionKind, boolean>; checked: Record<TranscriptionKind, boolean>; saved: Record<TranscriptionKind, number>; sherpaArchiveReady: boolean; current: string; error: string };
 const emptyFlags = () => Object.fromEntries(['engine', ...TRANSCRIPTION_MODELS.map(model => model.id)].map(kind => [kind, false])) as Record<TranscriptionKind, boolean>;
 const emptySaved = () => Object.fromEntries(['engine', ...TRANSCRIPTION_MODELS.map(model => model.id)].map(kind => [kind, 0])) as Record<TranscriptionKind, number>;
@@ -17,14 +18,15 @@ export async function transcriptionDirectory(folder: FileSystemDirectoryHandle, 
   return root.getDirectoryHandle(kind === 'engine' ? 'Transformers-ASR' : transcriptionModel(kind).path.slice('models/'.length), { create });
 }
 async function fileAt(dir: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  const parts = workspacePathParts(name);
   try {
-    const parts = name.split('/'); let here = dir;
+    let here = dir;
     for (const part of parts.slice(0, -1)) here = await here.getDirectoryHandle(part);
     return await (await here.getFileHandle(parts.at(-1)!)).getFile();
   } catch (error) { if (error instanceof DOMException && error.name === 'NotFoundError') return null; throw error; }
 }
 async function fileHandle(dir: FileSystemDirectoryHandle, name: string) {
-  const parts = name.split('/'); let here = dir;
+  const parts = workspacePathParts(name); let here = dir;
   for (const part of parts.slice(0, -1)) here = await here.getDirectoryHandle(part, { create: true });
   return here.getFileHandle(parts.at(-1)!, { create: true });
 }
@@ -113,7 +115,7 @@ async function downloadAsset(dir: FileSystemDirectoryHandle, kind: Transcription
     }
     await writer.close(); writer = null;
     if (count !== asset.bytes || !await verified(dir, asset)) throw new Error(`${asset.name} failed its integrity check.`);
-    const parts = recordName.split('/'); let parent = dir;
+    const parts = workspacePathParts(recordName); let parent = dir;
     for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part);
     await parent.removeEntry(parts.at(-1)!).catch(() => {});
   } finally { await writer?.close().catch(() => {}); }

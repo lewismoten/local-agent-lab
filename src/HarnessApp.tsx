@@ -58,6 +58,7 @@ import { projectWithGuide } from './harnessProjectGuide.ts';
 import { sidebarScrollForSelection, sidebarSessionWindow, SIDEBAR_SESSION_HEIGHT, sortedSidebarSessions } from './harnessSidebarWindow.ts';
 import { formatLibraryHits, indexLibraryFile, indexLibraryProject, indexableLibraryPath, libraryIndexCount, searchLibrary, type LibraryHit, type LibrarySearchPhase } from './harnessLibrary.ts';
 import { IMAGE_PRESETS, setImageGeneratedRecorder, type ImageConfig, type ImagePreset } from './imageGeneration.ts';
+import { imageLibraryPng } from './harnessGeneratedImage.ts';
 import { ACHIEVEMENTS } from './harnessAchievements.ts';
 import { ensureBrowserModelReady, invalidateModelSession, isModelConfirmed, isModelReady, testModel, getModelSession, subscribeModelSession } from './modelSession.ts';
 import { getModelDownload, modelDownloadManager, subscribeModelDownload } from './modelDownloadSession.ts';
@@ -73,6 +74,10 @@ import { browserFiles, clearHandle, ensureWritableFolder, hasWritableFolderPermi
 import { missingVisualDependencies } from './visualDependencies.ts';
 import HarnessContextInspector from './HarnessContextInspector.tsx';
 import ToastViewport from './ToastViewport.tsx';
+import ThemePicker from './ThemePicker.tsx';
+import { colorLuminance, customThemeVariables, type CustomTheme } from './customTheme.ts';
+import { generateThemeProposal } from './themeModel.ts';
+import type { ThemeId } from './themeOptions.ts';
 import { showToast } from './toastStore.ts';
 import './harness.css';
 import './harness-visual.css';
@@ -82,13 +87,15 @@ import './theme-upgrade.css';
 import './theme-cyber-next.css';
 import './theme-nightshift.css';
 import './theme-cyberpunk.css';
+import './theme-alternates.css';
+import './theme-signal-refresh.css';
 import brandLogo from '../docs/logo.svg?url';
 
-type View = 'chat' | 'discover' | 'journal' | 'tasks' | 'agents' | 'identities' | 'files' | 'memory' | 'models' | 'achievements' | 'notices';
-const VIEWS: Exclude<View, 'notices'>[] = ['chat', 'discover', 'journal', 'tasks', 'agents', 'identities', 'files', 'memory', 'models', 'achievements'];
+type View = 'chat' | 'discover' | 'journal' | 'tasks' | 'agents' | 'identities' | 'images' | 'files' | 'memory' | 'models' | 'achievements' | 'notices';
+const VIEWS: Exclude<View, 'notices'>[] = ['chat', 'discover', 'journal', 'tasks', 'agents', 'identities', 'images', 'files', 'memory', 'models', 'achievements'];
 const ROUTES: View[] = [...VIEWS, 'notices'];
-const VIEW_LABELS: Record<View, string> = { chat: 'Chat', discover: 'Discover', journal: 'Journal', tasks: 'Tasks', agents: 'Agents', identities: 'Identities', files: 'Files & tools', memory: 'Memory', models: 'Models', achievements: 'Achievements', notices: 'Third-party notices' };
-const VIEW_ICONS = { chat: MessageSquare, discover: Search, journal: BookOpen, tasks: ClipboardList, agents: Timer, identities: UserRound, files: FileCode2, memory: Brain, models: Sparkles, achievements: Trophy };
+const VIEW_LABELS: Record<View, string> = { chat: 'Chat', discover: 'Discover', journal: 'Journal', tasks: 'Tasks', agents: 'Agents', identities: 'Identities', images: 'Images', files: 'Files & tools', memory: 'Memory', models: 'Models', achievements: 'Achievements', notices: 'Third-party notices' };
+const VIEW_ICONS = { chat: MessageSquare, discover: Search, journal: BookOpen, tasks: ClipboardList, agents: Timer, identities: UserRound, images: ImageIcon, files: FileCode2, memory: Brain, models: Sparkles, achievements: Trophy };
 const ProviderSettings = lazy(() => import('./ProviderSettings.tsx'));
 const VisualWorkspaceAudit = lazy(() => import('./VisualWorkspaceAudit.tsx'));
 const HarnessProjectArtwork = lazy(() => import('./HarnessProjectArtwork.tsx'));
@@ -132,7 +139,7 @@ async function loadWorkspaceSettings(store: HarnessStore): Promise<WorkspaceSett
   if (saved) {
     const profiles = [...saved.profiles, ...DEFAULT_PROFILES.filter(item => !saved.profiles.some(profile => profile.id === item.id))];
     return workspaceSettings(profiles, profiles.some(item => item.id === saved.selectedProfileId) ? saved.selectedProfileId : 'browser',
-      saved.imageConfig.preset in IMAGE_PRESETS ? { ...IMAGE_PRESETS[saved.imageConfig.preset], ...saved.imageConfig } : IMAGE_PRESETS.none, saved.compactionAt);
+      saved.imageConfig.preset in IMAGE_PRESETS ? { ...IMAGE_PRESETS[saved.imageConfig.preset], ...saved.imageConfig } : IMAGE_PRESETS.none, saved.compactionAt, saved.themeId, saved.customThemes);
   }
   const migrate = shouldMigrateLegacySettings(store.workspaceId, localStorage.getItem('harness-settings-migrated') === 'yes', !!localStorage.getItem('ai-profiles'));
   const initial = migrate
@@ -312,6 +319,9 @@ export default function HarnessApp() {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [imageConfig, setImageConfig] = useState<ImageConfig>(loadImageConfig);
   const [compactionAt, setCompactionAt] = useState(DEFAULT_COMPACTION_AT);
+  const [themeId, setThemeId] = useState<ThemeId>('cyberpunk');
+  const [customThemes, setCustomThemes] = useState<CustomTheme[]>([]);
+  const [previewTheme, setPreviewTheme] = useState<CustomTheme | null>(null);
   const [settingsReadyId, setSettingsReadyId] = useState('');
   const settingsWrites = useRef<Promise<void>>(Promise.resolve());
   const [search, setSearch] = useState('');
@@ -522,7 +532,7 @@ export default function HarnessApp() {
         const settings = await loadWorkspaceSettings(workspace.store);
         if (!active) return;
         const memory = await workspace.store.memory();
-        setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setApiKeys({});
+        setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setCustomThemes(settings.customThemes); setThemeId(settings.themeId); setApiKeys({});
         setSettingsReadyId(workspace.store.workspaceId);
         manifestRef.current = workspace.manifest; setStore(workspace.store); setManifest(workspace.manifest); setFolder(openedFolder); setRememberedFolder(saved && !workspace.store.folder ? saved : null);
         setMemories(memory); setStartupError('');
@@ -535,7 +545,7 @@ export default function HarnessApp() {
             const files = await browserFiles();
             if (!active) return;
             setError(`Could not open the saved workspace: ${plainError(cause)}`);
-            setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setApiKeys({}); setSettingsReadyId(fallback.store.workspaceId);
+            setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setCustomThemes(settings.customThemes); setThemeId(settings.themeId); setApiKeys({}); setSettingsReadyId(fallback.store.workspaceId);
             manifestRef.current = fallback.manifest; setStore(fallback.store); setManifest(fallback.manifest); setFolder(files); setRememberedFolder(saved); setMemories(memory); setStartupError('');
           } catch (fallbackCause) {
             if (active) { setStore(null); setManifest(null); setRememberedFolder(saved); setStartupError(`Browser storage could not open: ${plainError(fallbackCause)}`); }
@@ -557,23 +567,43 @@ export default function HarnessApp() {
   }, [store]);
   useEffect(() => {
     if (!store) return;
-    const releaseRecorder = setImageGeneratedRecorder(async () => { await store.recordAchievementMetrics({ generatedArtwork: 1 }); });
+    const releaseRecorder = setImageGeneratedRecorder(async (image, request) => {
+      try {
+        const png = await imageLibraryPng(image);
+        await store.saveAvatarAsset(png, { title: `Generated · ${request.model}`.slice(0, 80), tags: ['Generated', request.model], source: 'generated', prompt: request.prompt });
+      } finally { await store.recordAchievementMetrics({ generatedArtwork: 1 }); }
+    });
     const announce = (event: Event) => {
       const detail = (event as CustomEvent<{ workspaceId: string; ids: string[] }>).detail;
       if (detail?.workspaceId !== store.workspaceId) return;
       const titles = detail.ids.map(id => ACHIEVEMENTS.find(item => item.id === id)?.title).filter(Boolean);
-      if (titles.length) showToast(`${titles.length === 1 ? 'Achievement' : 'Achievements'} unlocked: ${titles.join(', ')}`);
+      if (titles.length) showToast(`${titles.length === 1 ? 'Achievement' : 'Achievements'} unlocked: ${titles.join(', ')}`, 'success', { label: 'View achievements', onClick: () => navigate('achievements') });
     };
     window.addEventListener('harness:achievements-unlocked', announce);
     return () => { releaseRecorder(); window.removeEventListener('harness:achievements-unlocked', announce); };
   }, [store]);
   useEffect(() => {
+    const custom = previewTheme || (themeId.startsWith('custom:') ? customThemes.find(theme => theme.id === themeId.slice(7)) : null);
+    document.documentElement.dataset.theme = custom ? 'custom' : themeId;
+    const root = document.documentElement;
+    const variables = custom ? customThemeVariables(custom) : {};
+    for (const key of ['--theme-background', '--theme-panel', '--theme-raised', '--theme-text', '--theme-muted', '--theme-accent', '--theme-border', '--theme-font', '--theme-radius', '--theme-reading-size', '--theme-editor-size', '--theme-wallpaper']) {
+      if (variables[key]) root.style.setProperty(key, variables[key]);
+      else root.style.removeProperty(key);
+    }
+    root.dataset.themeMotion = custom?.motion || '';
+    root.dataset.themeBrightness = custom ? colorLuminance(custom.colors.background) > 0.45 ? 'light' : 'dark' : '';
+    root.dataset.themePreview = previewTheme ? 'true' : '';
+    root.dataset.themeWallpaper = custom?.wallpaper ? 'true' : '';
+  }, [themeId, customThemes, previewTheme]);
+  useEffect(() => { setPreviewTheme(null); }, [store?.workspaceId]);
+  useEffect(() => {
     if (!store || settingsReadyId !== store.workspaceId) return;
-    const next = workspaceSettings(profiles, selectedProfileId, imageConfig, compactionAt);
+    const next = workspaceSettings(profiles, selectedProfileId, imageConfig, compactionAt, themeId, customThemes);
     const task = settingsWrites.current.catch(() => {}).then(() => trackedWorkspaceWrite(() => store.saveSettings(next)));
     settingsWrites.current = task.catch(() => {});
     void task.catch(cause => setError(`Could not save workspace settings: ${plainError(cause)}`));
-  }, [store, settingsReadyId, profiles, selectedProfileId, imageConfig, compactionAt]);
+  }, [store, settingsReadyId, profiles, selectedProfileId, imageConfig, compactionAt, themeId, customThemes]);
   useEffect(() => {
     if (route.view !== 'chat' || !store || !folder || settingsReadyId !== store.workspaceId || switchingWorkspace.current || chatProfileId !== 'browser' || browserStarterModel) return;
     let active = true;
@@ -812,7 +842,7 @@ export default function HarnessApp() {
       try { await saveHandle(picked); }
       catch { remembered = false; try { await clearHandle(); } catch { /* Browser storage is unavailable. */ } }
       clearWorkspaceView();
-      setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setApiKeys({}); setSettingsReadyId(opened.store.workspaceId);
+      setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setCustomThemes(settings.customThemes); setThemeId(settings.themeId); setApiKeys({}); setSettingsReadyId(opened.store.workspaceId);
       manifestRef.current = opened.manifest; setStore(opened.store); setManifest(opened.manifest); setFolder(picked); setRememberedFolder(null); setMemories(memory);
       setProjectId(opened.manifest.projects[0].id); setError(''); setStartupError(''); navigate('chat');
       showToast(remembered ? `Opened ${picked.name}.` : `Opened ${picked.name}. Reconnect this folder after a refresh; browser storage could not remember it.`);
@@ -840,7 +870,7 @@ export default function HarnessApp() {
       const localFiles = await browserFiles();
       await clearHandle();
       clearWorkspaceView();
-      setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setApiKeys({}); setSettingsReadyId(opened.store.workspaceId);
+      setProfiles(settings.profiles); setSelectedProfileId(settings.selectedProfileId); setImageConfig(settings.imageConfig); setCompactionAt(settings.compactionAt); setCustomThemes(settings.customThemes); setThemeId(settings.themeId); setApiKeys({}); setSettingsReadyId(opened.store.workspaceId);
       manifestRef.current = opened.manifest; setFolder(localFiles); setRememberedFolder(null); setStore(opened.store); setManifest(opened.manifest); setMemories(await opened.store.memory()); setProjectId('home'); navigate('chat');
       showToast('Workspace ejected. You can remove the drive.');
     } catch (cause) { setError(`Could not eject workspace: ${plainError(cause)}`); }
@@ -1732,7 +1762,7 @@ export default function HarnessApp() {
       const failed: string[] = [];
       for (const file of Array.from(files)) {
         try {
-          if (!/^[\w .()\-]+$/.test(file.name)) throw new Error(`Unsafe file name: ${file.name}`);
+          if (!/^[\w .()-]+$/.test(file.name)) throw new Error(`Unsafe file name: ${file.name}`);
           const path = await unusedToolFilePath(targetFolder, targetScope, targetProjectId, targetArea, [targetDirectory, file.name].filter(Boolean).join('/'));
           await writeBlob(targetFolder, toolFilePath(targetScope, targetProjectId, targetArea, path), file);
           uploaded.push(path);
@@ -1974,7 +2004,7 @@ export default function HarnessApp() {
           const result = await executeHarnessAgent({ agent: liveAgent, manifest: liveManifest, store, folder, profiles, apiKeys, memories, imageConfig, compactionAt, preferredProjectId: manual ? projectId : undefined, signal: controller.signal, onToolApproval: approveToolCall,
             onModelWait: () => setRunningAgentStage('queued'), onModelAcquired: () => { modelAcquired = true; setRunningAgentStage('working'); } });
           await updateAgent(liveAgent.id, current => ({ ...finishAgentRun(current, consumedEventId), runClaim: undefined, lastRunAt: isoNow(), lastProjectId: result.session.projectId, lastResult: result.result.slice(0, 500) }));
-          showToast(`${liveAgent.name} finished a run. Open its conversation to review.`);
+          showToast(`${liveAgent.name} finished a run.`, 'success', { label: 'Open conversation', onClick: () => { setProjectId(result.session.projectId); navigate('chat', result.session.id); } });
           if (result.session.projectId === projectIdRef.current) {
             try {
               const current = await store.sessions(result.session.projectId);
@@ -2089,7 +2119,7 @@ export default function HarnessApp() {
   const actionSessionBusy = !!actionMeta && ((busy && selectedId === actionMeta.id) || (actionMeta.agentId && runningAgentId === actionMeta.agentId));
   const discoveryCount = searched ? searchResults.length : allSessions.length;
   const discoveryItems: SearchResult[] = searched ? searchResults.slice(0, discoverLimit) : allSessions.slice(0, discoverLimit).map(meta => ({ meta, excerpt: meta.preview }));
-  return <div className={`harness${busy || runningAgentId ? ' is-working' : ''}`} data-view={route.view}>
+  return <div className={`harness${busy || runningAgentId ? ' is-working' : ''}`} data-view={route.view} data-theme={previewTheme || themeId.startsWith('custom:') ? 'custom' : themeId}>
     <aside id="harness-sidebar" ref={sidebarRef} className={`harness-sidebar ${sidebarOpen ? 'open' : ''}`} role={mobileLayout && sidebarOpen ? 'dialog' : undefined} aria-label={mobileLayout && sidebarOpen ? 'Navigation' : undefined} aria-modal={mobileLayout && sidebarOpen ? true : undefined} inert={mobileLayout && !sidebarOpen}>
       <div className="harness-brand"><div className="harness-brand-mark"><img src={brandLogo} alt="" width="42" height="42"/></div><div><strong>Local Agent Lab</strong><small>YOUR OFFLINE WORKSPACE</small></div><button ref={sidebarCloseRef} className="harness-mobile-close" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}><X size={18}/></button></div>
       <div className="harness-workspace"><div className="harness-workspace-heading"><span className="harness-overline">WORKSPACE</span><WorkspaceStorageHelp portable={portableWorkspace}/></div><strong>{portableWorkspace ? folder?.name : manifest.name}</strong><div>{portableWorkspace ? <button onClick={() => void connectFolder()}><FolderOpen size={15}/>Swap drive</button> : rememberedFolder ? <><button onClick={() => void reconnectFolder()} title={`Reconnect ${rememberedFolder.name}`}><FolderOpen size={15}/>Reconnect drive</button>{window.showDirectoryPicker && <button className="harness-icon" onClick={() => void connectFolder()} title="Choose another drive" aria-label="Choose another drive"><FolderOpen size={15}/></button>}</> : window.showDirectoryPicker ? <button onClick={() => void connectFolder()}><FolderOpen size={15}/>Connect drive</button> : <span className="harness-storage-note">{browserFileStorage ? 'Browser files' : 'Browser storage'}</span>}{portableWorkspace && <button className="harness-icon" onClick={() => void ejectFolder()} title="Eject workspace" aria-label="Eject workspace"><ArrowUp size={15}/></button>}</div>{rememberedFolder && !portableWorkspace && <small className="harness-reconnect-note">{rememberedFolder.name} is not open.</small>}<button className="harness-end-session" type="button" onClick={() => void endLocalSession()}><LogOut size={14}/>Leave this computer</button></div>
@@ -2112,7 +2142,7 @@ export default function HarnessApp() {
     {sidebarOpen && <button type="button" className="harness-sidebar-scrim" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}/>}
     <main className="harness-main" inert={mobileLayout && sidebarOpen}>
       <div className="harness-atmosphere" aria-hidden="true"><span className="harness-atmosphere-orbit"/><span className="harness-atmosphere-reticle"/><span className="harness-atmosphere-points"/><span className="harness-atmosphere-trace"/><span className="harness-atmosphere-flare"/><span className="harness-atmosphere-scan"/><span className="harness-atmosphere-horizon"/><span className="harness-atmosphere-glyphs"/><span className="harness-atmosphere-beam"/><span className="harness-atmosphere-sparks"/><svg className="harness-atmosphere-network" viewBox="0 0 520 520" fill="none" preserveAspectRatio="xMidYMid meet"><path d="M56 392 146 305 235 338 325 208 442 154M146 305 105 164 238 94 325 208 390 365 235 338M238 94 442 154 390 365 475 435"/><circle cx="56" cy="392" r="3"/><circle cx="146" cy="305" r="4"/><circle cx="235" cy="338" r="3"/><circle cx="325" cy="208" r="5"/><circle cx="442" cy="154" r="3"/><circle cx="105" cy="164" r="3"/><circle cx="238" cy="94" r="4"/><circle cx="390" cy="365" r="4"/><circle cx="475" cy="435" r="3"/></svg></div>
-      <header className="harness-topbar"><button ref={menuButtonRef} className="harness-menu" aria-label="Open navigation" aria-controls="harness-sidebar" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={19}/></button><div className="harness-breadcrumb"><span>{project.name}</span><ChevronRight size={14}/><strong>{VIEW_LABELS[route.view]}</strong></div><HarnessQuickOpen key={store.workspaceId} store={store} projects={manifest.projects} onOpen={session => { setProjectId(session.projectId); navigate('chat', session.id); }}/><AgentNotice agents={manifest.agents} runningId={runningAgentId} runningStage={runningAgentStage} chatBusy={busy} modelBusy={!!lease.owner} onDelay={agent => void delayAgent(agent)} onPause={agent => void pauseAgent(agent)}/><div className="harness-top-actions"><span className="harness-signal-bars" aria-hidden="true"><i/><i/><i/><i/></span><span className="harness-status-dot" title={portableWorkspace ? `Saved to ${folder?.name}` : 'Saved in this browser'}/><span>{portableWorkspace ? folder?.name : browserFileStorage ? 'Browser files' : 'Browser workspace'}</span></div></header>
+      <header className="harness-topbar"><button ref={menuButtonRef} className="harness-menu" aria-label="Open navigation" aria-controls="harness-sidebar" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={19}/></button><div className="harness-breadcrumb"><span>{project.name}</span><ChevronRight size={14}/><strong>{VIEW_LABELS[route.view]}</strong></div><HarnessQuickOpen key={store.workspaceId} store={store} projects={manifest.projects} onOpen={session => { setProjectId(session.projectId); navigate('chat', session.id); }}/><AgentNotice agents={manifest.agents} runningId={runningAgentId} runningStage={runningAgentStage} chatBusy={busy} modelBusy={!!lease.owner} onDelay={agent => void delayAgent(agent)} onPause={agent => void pauseAgent(agent)}/><ThemePicker key={store.workspaceId} value={themeId} customThemes={customThemes} onChange={setThemeId} onSave={theme => setCustomThemes(current => [...current.filter(item => item.id !== theme.id), theme])} onDelete={id => setCustomThemes(current => current.filter(theme => theme.id !== id))} onPreview={setPreviewTheme} onConfigureModel={() => navigate('models')} onGenerate={chatConfig ? (stage, draft, signal) => generateThemeProposal(chatConfig, stage, draft, signal) : undefined}/><div className="harness-top-actions"><span className="harness-signal-bars" aria-hidden="true"><i/><i/><i/><i/></span><span className="harness-status-dot" title={portableWorkspace ? `Saved to ${folder?.name}` : 'Saved in this browser'}/><span>{portableWorkspace ? folder?.name : browserFileStorage ? 'Browser files' : 'Browser workspace'}</span></div></header>
       {error && <div className="harness-error" role="alert">{error}<button aria-label="Dismiss error" onClick={() => setError('')}><X size={16}/></button></div>}
       {route.view === 'notices' && <Suspense fallback={<section className="harness-page" role="status">Opening notices…</section>}><ThirdPartyNotices/></Suspense>}
       {route.view === 'achievements' && <Suspense fallback={<section className="harness-page" role="status">Opening achievements…</section>}><HarnessAchievements store={store} manifest={manifest} folder={folder} imageOptions={imageCandidates(imageConfig, manifest.modelPreferences.image)} onWrite={trackedWorkspaceWrite}/></Suspense>}
@@ -2121,7 +2151,7 @@ export default function HarnessApp() {
         <div className="harness-compose"><div className={`harness-compose-box${chatDragOver ? ' drop-target' : ''}`} onDragEnter={event => chatFileDrag(event, 'enter')} onDragOver={event => chatFileDrag(event, 'over')} onDragLeave={event => chatFileDrag(event, 'leave')} onDrop={event => chatFileDrag(event, 'drop')}>{chatDragOver && <div className="harness-drop-hint" aria-hidden="true"><Upload size={24}/>Drop files into this project's Library</div>}<textarea value={draft} onChange={event => updateDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); void send(); } }} placeholder={draftReadyKey !== draftKey ? 'Opening saved draft…' : modelReady ? 'Ask, plan, research, or work on project files…' : chatAutoLoading ? 'Loading your browser model…' : 'Write a message to get started…'} rows={3} disabled={busy || draftReadyKey !== draftKey}/><div><div className="harness-compose-tools"><button className="harness-secondary" title="Add files to this project’s library" onClick={() => chatFileInput.current?.click()} disabled={!folder || busy || chatUploadBusy || draftReadyKey !== draftKey}><Upload size={15}/>{chatUploadBusy ? "Adding…" : "Add files"}</button><HarnessContextInspector key={`${store.workspaceId}:${project.id}:${selected?.id || "new"}`} store={store} meta={selected} project={project} manifest={manifest} memories={memories} config={chatConfig || { ...chatProfile, apiKey: apiKeys[chatProfile.id] || '' }} selectedConfig={chatProfile} profiles={profiles} onSelectProfile={id => void selectProjectChatProfile(id)} onUpdateProfile={next => setProfiles(items => items.map(item => item.id === next.id ? next : item))} compactionAt={compactionAt} onCompactionAtChange={setCompactionAt} draft={draft} folder={folder}/><span>{folder ? browserFileStorage ? 'Browser file tools available' : 'Project tools available' : 'Connect a folder to use file tools'}</span></div>{busy ? <button className="harness-danger harness-stop" onClick={() => { setStopping(true); chatAbortRef.current?.abort(new DOMException("Stopped by user.", "AbortError")); }} disabled={stopping} title="Stop response"><X size={15}/> {stopping ? "Stopping…" : "Stop"}</button> : <button className="harness-primary" onClick={() => void send()} disabled={!draft.trim() || preparingSend || chatUploadBusy || draftReadyKey !== draftKey} title={modelReady ? 'Send message' : chatProfile.model ? 'Load model and send' : 'Choose a model to send'}><ArrowUp size={18}/></button>}</div></div><input ref={chatFileInput} type="file" multiple hidden onChange={event => { void attachChatFiles(event.target.files); event.target.value = ""; }}/><small>{chatConfig?.model || chatProfile.model || 'No model selected'}{chatUsingFallback ? ' · fallback' : ''}{lease.owner && !lease.owner.startsWith('chat:') ? ` · ${lease.owner} using model` : ''}</small>{chatAutoLoading && <small role="status">{chatLoadProgress}</small>}{preparingSend && !chatAutoLoading && <small role="status">{modelStatus || 'Preparing model…'}</small>}{!modelReady && !chatProfile.model && modelStatus && <small role="status">{modelStatus}</small>}{!modelReady && chatProfile.provider === 'browser' && !!chatProfile.model && !!folder && !chatAutoLoading && <button className="harness-compose-load" disabled={!!lease.owner} onClick={() => void ensureChatModel(primaryChatConfig, true)}>{autoLoadFailed.current.has(primaryChatLoadKey) ? 'Retry model load' : 'Load model'}</button>}{!modelReady && autoLoadFailed.current.has(primaryChatLoadKey) && <small role="alert">{modelStatus}</small>}</div>
       </div>}
       {route.view === 'discover' && <section className="harness-page"><div className="harness-heading"><span className="harness-overline">FIND YOUR WORK</span><h1>Discover</h1><p>Browse by topic, tag, date, or search the full conversation text.</p></div><div className="harness-search"><input aria-label="Search conversations" value={search} onChange={event => { searchAbort.current?.abort(); searchRun.current++; setSearch(event.target.value); setSearched(false); setSearchProgress(''); setSearchFailures([]); setSearchFailureTotal(0); setDiscoverLimit(DISCOVER_PAGE_SIZE); }} onKeyDown={event => { if (event.key === 'Enter') void searchConversations(); }} placeholder="Search conversations…"/><select aria-label="Search mode" value={searchMode} onChange={event => { searchAbort.current?.abort(); searchRun.current++; setSearchMode(event.target.value as 'topics' | 'full'); setSearched(false); setSearchProgress(''); setSearchFailures([]); setSearchFailureTotal(0); setDiscoverLimit(DISCOVER_PAGE_SIZE); }}><option value="topics">Titles & tags</option><option value="full">Full text</option></select><button className="harness-primary" onClick={() => void searchConversations()}><Search size={16}/> Search</button></div>{searchProgress && <p className="harness-muted" role="status">{searchProgress}</p>}{searchFailureTotal > 0 && <details className="harness-search-failures"><summary>{searchFailureTotal} conversation{searchFailureTotal === 1 ? "" : "s"} could not be searched</summary><ul>{searchFailures.map(item => <li key={item.id}><strong>{item.title}</strong> · {item.reason}</li>)}</ul>{searchFailureTotal > searchFailures.length && <small>Showing the first {searchFailures.length} failures.</small>}</details>}<div className="harness-tag-cloud">{discoveryTags.map(({ tag, count, level }) => <button key={tag} className={`harness-tag-level-${level}`} title={`${count} conversation${count === 1 ? '' : 's'}`} aria-label={`${tag}, ${count} conversation${count === 1 ? '' : 's'}`} onClick={() => { setSearch(tag); setSearchMode('topics'); void searchConversations(tag, 'topics', true); }}>{tag}</button>)}</div>{!allSessions.length && !searched && <DiscoverEmptyState onChat={() => navigate('chat')} onModels={() => navigate('models')} onFiles={() => navigate('files')}/>} {!searched && !!allSessions.length && <HarnessTimeline sessions={allSessions} onOpen={(meta, seq) => { setProjectId(meta.projectId); navigate('chat', meta.id, seq); }}/>}<div className="harness-results">{discoveryItems.map(({ meta, excerpt, seq }) => <button key={meta.id} onClick={() => { setProjectId(meta.projectId); navigate('chat', meta.id, seq); }}><div><strong>{meta.title}</strong><span>{manifest.projects.find(item => item.id === meta.projectId)?.name} · {prettyDate(meta.createdAt)}–{prettyDate(meta.updatedAt)}</span></div><p>{excerpt}</p><small>{meta.tags.join(' · ')}</small></button>)}{searched && !searchResults.length && !searchProgress.startsWith('Searching') && <p className="harness-muted">No conversations matched. Try full-text search or a shorter phrase.</p>}</div>{discoveryCount > discoverLimit && <button className="harness-secondary harness-show-more" onClick={() => setDiscoverLimit(limit => limit + DISCOVER_PAGE_SIZE)}>Show more conversations · {Math.min(discoverLimit, discoveryCount)} of {discoveryCount}</button>}{!searched && !!allSessions.length && <><div className="harness-timeline"><h2>Topic timeline</h2>{timelinePage.items.map(({ meta, segment }) => <button key={segment.id} onClick={() => { setProjectId(meta.projectId); navigate('chat', meta.id, segment.startSeq); }}><time>{prettyDate(segment.startAt)}–{prettyDate(segment.endAt)}</time><strong>{segment.title}</strong><span>{meta.title} · {segment.tags.join(' · ')}</span><p>{segment.summary}</p></button>)}{timelinePage.total > timelineLimit && <button className="harness-secondary harness-show-more" onClick={() => setTimelineLimit(limit => limit + TIMELINE_PAGE_SIZE)}>Show older topics · {Math.min(timelineLimit, timelinePage.total)} of {timelinePage.total}</button>}</div></>}</section>}
-      {route.view === 'identities' && <HarnessIdentities identities={manifest.identities} chatIdentityId={manifest.chatIdentityId} store={store} folder={folder} imageOptions={imageCandidates(imageConfig, manifest.modelPreferences.image)} onSave={saveIdentity} onSelectChat={selectChatIdentity} onSaveAvatar={(id, blob) => trackedWorkspaceWrite(() => store.saveIdentityAvatar(id, blob))} onSaveAsset={(blob, input) => trackedWorkspaceWrite(() => store.saveAvatarAsset(blob, input))} onUpdateAsset={(id, title, tags) => trackedWorkspaceWrite(() => store.updateAvatarAsset(id, title, tags))} onOpenModels={() => navigate('models')}/>}
+      {(route.view === 'identities' || route.view === 'images') && <HarnessIdentities key={route.view} mode={route.view} identities={manifest.identities} chatIdentityId={manifest.chatIdentityId} store={store} folder={folder} imageOptions={imageCandidates(imageConfig, manifest.modelPreferences.image)} onSave={saveIdentity} onSelectChat={selectChatIdentity} onSaveAvatar={(id, blob) => trackedWorkspaceWrite(() => store.saveIdentityAvatar(id, blob))} onSaveAsset={(blob, input) => trackedWorkspaceWrite(() => store.saveAvatarAsset(blob, input))} onUpdateAsset={(id, title, tags, favorite, collections) => trackedWorkspaceWrite(() => store.updateAvatarAsset(id, title, tags, favorite, collections))} onOpenModels={() => navigate('models')} onOpenImages={() => navigate('images')}/>}
       {route.view === 'tasks' && <HarnessTasks key={`${store.workspaceId}:${project.id}`} store={store} project={project} agents={manifest.agents} onQueueAgent={queueTaskForAgent} onWrite={trackedWorkspaceWrite}/>}
       {route.view === 'journal' && <HarnessJournal key={store.workspaceId} store={store} projects={manifest.projects} agents={manifest.agents} modelConfig={chatProfile.model ? { ...chatProfile, apiKey: apiKeys[chatProfile.id] || '' } : null} imageOptions={imageCandidates(imageConfig, manifest.modelPreferences.image)} folder={folder} onOpen={(id, sessionId, seq) => { setProjectId(id); navigate('chat', sessionId, seq); }} onWrite={trackedWorkspaceWrite} onOpenModels={() => navigate('models')}/>}
       {route.view === 'agents' && <section className="harness-page"><div className="harness-heading harness-agent-heading"><div><span className="harness-overline">BROWSER ACTIVE ONLY</span><h1>Agents</h1><p>Schedules run while this tab is open. Chat takes the next available model slot.</p></div><button className="harness-primary" onClick={() => editAgent()}><Plus size={16}/> New agent</button></div>{!manifest.agents.length && <div className="harness-agent-templates">{AGENT_TEMPLATES.map((template, index) => <button key={template.name} className="harness-card" onClick={() => editAgent(undefined, index)}><Sparkles size={22}/><h2>{template.name}</h2><p>{template.identity}</p><span>Create agent <ChevronRight size={14}/></span></button>)}</div>}<div className="harness-agent-list">{manifest.agents.map(agent => <div className="harness-card" key={agent.id}><div className="harness-agent-card-head"><div><span className="harness-overline">{agent.schedule === 'interval' ? `EVERY ${Math.max(5, agent.everyMinutes)} MIN` : agent.schedule.toUpperCase()}{agent.paused ? ' · PAUSED' : ''}</span><h2>{agent.name}</h2></div><span className={agent.paused ? 'harness-agent-state paused' : 'harness-agent-state'}>{runningAgentId === agent.id ? runningAgentStage === 'working' ? 'Working' : runningAgentStage === 'queued' ? 'Queued' : 'Preparing' : agent.runClaim ? 'Needs review' : agent.paused ? 'Paused' : agent.schedule === 'manual' ? 'Manual' : agent.schedule === 'event' ? nextAgentEvent(agent) ? `${(agent.pendingEvents?.length || 0) + Number(!!agent.pendingEvent)} queued` : 'Waiting for event' : 'Scheduled'}</span></div><p>{identityInstructions(manifest, agent.identityId, agent.identity)}</p><p className="harness-agent-prompt">{agent.prompt}</p>{agent.runClaim && <p className="harness-agent-interrupted" role="status">Run started {prettyDate(agent.runClaim.startedAt)}. Review its log before retrying.</p>}<div className="harness-agent-meta">{agent.allProjects ? 'All projects' : `${agent.projectIds.length} project${agent.projectIds.length === 1 ? '' : 's'}`} · {profiles.find(item => item.id === agent.profileId)?.label || 'Missing profile'}{agent.workspaceAccess ? ' · Workspace files' : ''}</div>{agent.lastResult && <details><summary>Last run · {agent.lastRunAt ? prettyDate(agent.lastRunAt) : ''}</summary><p>{agent.lastResult}</p></details>}<HarnessAgentEvents agent={agent} projects={manifest.projects} disabled={!!agent.runClaim || runningAgentId === agent.id} onDismiss={(eventId, description) => void dismissPendingEvent(agent, eventId, description)}/><div className="harness-agent-actions"><button className="harness-primary" onClick={() => void runAgent(agent, true)} disabled={toolPolicyBusy || !!runningAgentId || !!agent.runClaim || !readyProfile(agent.profileId, 'code', manifest.modelPreferences, profiles, apiKeys, !!folder) && !(!!folder && profiles.some(item => item.id === agent.profileId && item.provider === 'browser' && !!item.model))}>{runningAgentId === agent.id ? runningAgentStage === 'working' ? 'Working…' : runningAgentStage === 'queued' ? 'Queued…' : 'Preparing…' : 'Run now'}</button><button className="harness-secondary" onClick={() => void pauseAgent(agent)} disabled={!!agent.runClaim && runningAgentId !== agent.id}>{runningAgentId === agent.id ? 'Stop & pause' : agent.paused ? 'Resume' : 'Pause'}</button>{agent.runClaim && runningAgentId !== agent.id && <button className="harness-secondary" onClick={() => void retryInterruptedAgent(agent)}>Allow retry</button>}<button className="harness-secondary" onClick={() => editAgent(agent)}>Edit</button>{(agent.lastRunAt || agent.runClaim) && <button className="harness-secondary" onClick={() => void openRunLog(agent)}>Open run log</button>}</div></div>)}</div></section>}

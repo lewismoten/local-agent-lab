@@ -23,10 +23,12 @@
 .harness-achievement-card.unlocked { border-color: #7edcc9; box-shadow: inset 0 1px #e5fff02c, 0 0 22px #71efd319; }
 .harness-achievement-card.hidden-goal { opacity: .76; }
 .harness-achievement-top { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
-.harness-achievement-symbol { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid #6ab8b4; border-radius: 9px 3px 9px 3px; background: #184056; font-size: 20px; }
+.harness-achievement-symbol { display: grid; place-items: center; flex: none; width: 50px; height: 50px; padding: 0; overflow: hidden; border: 1px solid #6ab8b4; border-radius: 9px 3px 9px 3px; color: var(--h-text); background: #184056; font-size: 23px; }
+.harness-achievement-symbol img { display: block; width: 100%; height: 100%; object-fit: cover; }
+button.harness-achievement-symbol { cursor: pointer; }
+button.harness-achievement-symbol:hover { border-color: #a1fff1; box-shadow: 0 0 14px #60ecde60; }
+button.harness-achievement-symbol:focus-visible { outline: 2px solid #a1fff1; outline-offset: 2px; }
 .harness-achievement-state { margin-right: auto; color: #abd4d6; font: 700 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
-.harness-achievement-top .harness-surface-artwork-button { display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; overflow: hidden; border: 1px solid #548b9b; border-radius: 6px; color: #9ffbed; background: #173246; }
-.harness-achievement-top .harness-surface-artwork-button:hover { border-color: #a1fff1; box-shadow: 0 0 14px #60ecde60; }
 .harness-achievement-card.unlocked .harness-achievement-state { color: #91ffdb; }
 .harness-achievement-card h2 { margin: 0 0 5px; font-size: 16px; }
 .harness-achievement-card p { flex: 1; margin: 0 0 13px; color: var(--h-muted); font-size: 12px; }

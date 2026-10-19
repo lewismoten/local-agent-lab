@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { avatarPackPlan, runAvatarPack } from '../src/harnessAvatarPack.ts';
+import { cleanAvatarPackPreferences } from '../src/harnessAvatarPackPreferences.ts';
 
 test('mixed avatar packs include people, robots, and symbols', () => {
   const plan = avatarPackPlan('mixed', 8, 'cyberpunk, cartoon');
@@ -8,12 +9,15 @@ test('mixed avatar packs include people, robots, and symbols', () => {
   assert.ok(plan.some(item => item.tags.includes('Person')));
   assert.ok(plan.some(item => item.tags.includes('Robot')));
   assert.ok(plan.some(item => item.tags.includes('Symbol')));
+  assert.ok(plan.some(item => item.tags.includes('Animal')));
+  assert.ok(plan.some(item => item.tags.includes('Fantasy')));
   assert.ok(plan.every(item => item.prompt.includes('no recognizable existing characters')));
 });
 
 test('pack limits and filters keep one subject family with custom direction', () => {
   const plan = avatarPackPlan('people', 30, 'watercolor', 'adult women');
-  assert.equal(plan.length, 12);
+  assert.equal(plan.length, 24);
+  assert.equal(new Set(plan.map(item => item.title)).size, 24);
   assert.ok(plan.every(item => item.tags.includes('Person')));
   assert.ok(plan.every(item => item.prompt.includes('adult women')));
   assert.ok(!plan.some(item => item.tags.includes('Robot')));
@@ -49,4 +53,19 @@ test('pack generation saves sequentially and keeps images completed before Stop'
     'generate 0', 'save 0', `saved 1: ${plan[0].title}`,
     'generate 1', 'save 1', `saved 2: ${plan[1].title}`,
   ]);
+});
+
+test('expanded subject families and multiple direction chips reach image prompts', () => {
+  for (const [kind, tag] of [['animals', 'Animal'], ['fantasy', 'Fantasy'], ['objects', 'Object']]) {
+    const plan = avatarPackPlan(kind, 8, 'Woodcut', 'Playful, Bold colors, Unusual silhouette');
+    assert.equal(plan.length, 8);
+    assert.ok(plan.some(item => item.tags.includes(tag)));
+    assert.ok(plan.every(item => item.prompt.includes('Visual direction: Woodcut')));
+    assert.ok(plan.every(item => item.prompt.includes('Unusual silhouette')));
+  }
+});
+
+test('workspace avatar pack preferences normalize repeated custom choices', () => {
+  assert.deepEqual(cleanAvatarPackPreferences({ styles: ['Paper cut', 'paper cut', '<script>'], directions: ['Lively', 'lively', ''] }),
+    { version: 1, styles: ['paper cut'], directions: ['lively'] });
 });

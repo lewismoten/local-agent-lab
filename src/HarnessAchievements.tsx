@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Trophy } from 'lucide-react';
-import HarnessSurfaceArtwork, { SurfaceArtworkButton } from './HarnessSurfaceArtwork.tsx';
+import HarnessSurfaceArtwork from './HarnessSurfaceArtwork.tsx';
+import { useAvatarAssetUrl } from './HarnessIdentityAvatar.tsx';
 import { ACHIEVEMENTS, emptyAchievementLedger, scanAchievementInventory, visibleAchievements, type Achievement, type AchievementLedger } from './harnessAchievements.ts';
 import { emptySurfaceArtwork, type SurfaceArtworkMap } from './harnessSurfaceArtwork.ts';
 import type { HarnessManifest } from './harnessData.ts';
@@ -8,6 +9,15 @@ import type { HarnessStore } from './harnessStore.ts';
 import type { ImageConfig } from './imageGeneration.ts';
 import { showCompletionToast } from './toastStore.ts';
 import './harnessAchievements.css';
+
+function AchievementBadge({ store, achievement, assetId, onOpen }: {
+  store: HarnessStore; achievement: Achievement; assetId?: string; onOpen: () => void;
+}) {
+  const url = useAvatarAssetUrl(store, assetId);
+  return <button type="button" className="harness-achievement-symbol" aria-label={`${assetId ? 'Edit' : 'Add'} image for ${achievement.title}`} onClick={onOpen}>
+    {url ? <img src={url} alt=""/> : achievement.icon}
+  </button>;
+}
 
 export default function HarnessAchievements({ store, manifest, folder, imageOptions, onWrite }: {
   store: HarnessStore;
@@ -35,7 +45,7 @@ export default function HarnessAchievements({ store, manifest, folder, imageOpti
       }, controller.signal);
       if (controller.signal.aborted) return;
       setLedger(await onWrite(() => store.updateAchievementLedger(observed.counts, observed.modelsSeen, observed.modelTypesSeen)));
-      showCompletionToast('Achievements updated.', started);
+      showCompletionToast('Achievements updated.', started, 2000, { label: 'View achievements', onClick: () => { location.hash = '/achievements'; } });
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -49,7 +59,6 @@ export default function HarnessAchievements({ store, manifest, folder, imageOpti
     }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { active = false; scan.current?.abort(); };
     // The view is keyed to the workspace, so it scans when opened or refreshed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store]);
   useEffect(() => {
     let active = true;
@@ -72,7 +81,7 @@ export default function HarnessAchievements({ store, manifest, folder, imageOpti
     <div className="harness-achievements-grid">{entries.map(({ achievement, hidden, unlocked }) => {
       const current = ledger.counts[achievement.metric];
       return <article key={achievement.id} className={`harness-card harness-achievement-card${unlocked ? ' unlocked' : ''}${hidden ? ' hidden-goal' : ''}`}>
-        <div className="harness-achievement-top"><span className="harness-achievement-symbol" aria-hidden="true">{hidden ? '◇' : achievement.icon}</span><span className="harness-achievement-state">{unlocked ? 'UNLOCKED' : hidden ? 'HIDDEN GOAL' : 'IN PROGRESS'}</span>{!hidden && <SurfaceArtworkButton store={store} title={achievement.title} assetId={artwork.items[`achievement:${achievement.id}`]?.assetId} onOpen={() => setEditing(achievement)}/>}</div>
+        <div className="harness-achievement-top">{hidden ? <span className="harness-achievement-symbol" aria-hidden="true">◇</span> : <AchievementBadge store={store} achievement={achievement} assetId={artwork.items[`achievement:${achievement.id}`]?.assetId} onOpen={() => setEditing(achievement)}/>}<span className="harness-achievement-state">{unlocked ? 'UNLOCKED' : hidden ? 'HIDDEN GOAL' : 'IN PROGRESS'}</span></div>
         <h2>{hidden ? '???' : achievement.title}</h2><p>{hidden ? 'Complete the previous milestone to reveal this goal.' : achievement.description}</p>
         {!hidden && <div className="harness-achievement-meter"><progress max={achievement.target} value={Math.min(current, achievement.target)} aria-label={`${achievement.title} progress`}/><span>{Math.min(current, achievement.target).toLocaleString()} / {achievement.target.toLocaleString()}</span></div>}
         {unlocked && <small>Earned {new Date(ledger.unlockedAt[achievement.id]).toLocaleDateString()}</small>}

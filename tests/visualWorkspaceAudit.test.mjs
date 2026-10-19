@@ -32,6 +32,7 @@ test('reopened visual report flags its own path and saved output', async () => {
     outputs: { images: { 'leaf.png': 'image' } } });
   const audit = await auditVisualWorkspace(root);
   assert.equal(audit.checkedRecords, 1);
+  assert.deepEqual(audit.unverifiedArtifacts, []);
   assert.deepEqual(audit.issues, [
     { artifactPath: 'models/Test/diagnostics/test-image.json', missingPaths: ['models/Test/weights.onnx', 'engines/Test/runtime.wasm'] },
     { artifactPath: 'outputs/images/leaf.png', missingPaths: ['models/Test/weights.onnx', 'engines/Test/runtime.wasm'] },
@@ -43,6 +44,7 @@ test('older visual records without file provenance remain unverified', async () 
   const audit = await auditVisualWorkspace(root);
   assert.equal(audit.checkedRecords, 0);
   assert.equal(audit.withoutProvenance, 1);
+  assert.deepEqual(audit.unverifiedArtifacts, []);
   assert.deepEqual(audit.issues, []);
 });
 
@@ -58,6 +60,7 @@ test('mesh formats keep distinct sidecars and each output gets its own warning',
   } } });
   const audit = await auditVisualWorkspace(root);
   assert.equal(audit.checkedRecords, 2);
+  assert.deepEqual(audit.unverifiedArtifacts, []);
   assert.ok(audit.issues.some(item => item.artifactPath === 'media/meshes/model.ply'));
   assert.ok(audit.issues.some(item => item.artifactPath === 'media/meshes/model.glb'));
 });
@@ -67,5 +70,12 @@ test('a conversion with no model dependency is verified without a missing warnin
   const audit = await auditVisualWorkspace(root);
   assert.equal(audit.checkedRecords, 1);
   assert.equal(audit.withoutProvenance, 0);
+  assert.deepEqual(audit.unverifiedArtifacts, []);
   assert.deepEqual(audit.issues, []);
+});
+
+test('older media without a matching pinned record remains visibly unverified', async () => {
+  const root = workspace({ media: { meshes: { 'unknown.ply': 'mesh' }, poses: { 'unknown.json': '{}' } } });
+  const audit = await auditVisualWorkspace(root);
+  assert.deepEqual(audit.unverifiedArtifacts, ['media/meshes/unknown.ply', 'media/poses/unknown.json']);
 });

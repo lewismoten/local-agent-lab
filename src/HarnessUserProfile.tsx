@@ -9,6 +9,7 @@ import type { HarnessStore } from './harnessStore.ts';
 import { generateImage, type ImageConfig } from './imageGeneration.ts';
 import { withModelLease } from './harnessLease.ts';
 import { showCompletionToast } from './toastStore.ts';
+import { openToastImagePreview } from './toastImagePreview.ts';
 import './harnessUserProfile.css';
 
 type UserProfile = NonNullable<HarnessManifest['userProfile']>;
@@ -81,12 +82,13 @@ export default function HarnessUserProfile({ open, profile, store, folder, image
         throw new Error(`No image generator completed the avatar. ${failures.join(' | ')}`);
       }, active.signal);
       if (active.signal.aborted) return;
-      const asset = await onSaveAsset(await compactIdentityAvatar(result),
+      const compact = await compactIdentityAvatar(result);
+      const asset = await onSaveAsset(compact,
         { title: `${name.trim() || 'My'} avatar`, tags: ['Person', 'My Avatar'], source: 'generated', prompt: request });
       setAssets(current => [asset, ...current]);
       setAvatarId(asset.id);
       setProgress('Avatar ready. Save your profile to use it in chat.');
-      showCompletionToast('Your avatar is ready.', startedAt);
+      showCompletionToast('Your avatar is ready.', startedAt, 2000, { label: 'View avatar', onClick: () => openToastImagePreview(compact, 'Your avatar') });
     } catch (cause) { if (!active.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (controller.current === active) controller.current = null; setGenerating(false); }
   };

@@ -1,17 +1,33 @@
+import { useEffect, useRef, useState } from 'react';
 import type { AvatarAsset } from './harnessAvatarLibrary.ts';
 import { avatarAssetMatches } from './harnessAvatarLibrary.ts';
 import { identityAvatarPath, type HarnessIdentity } from './harnessData.ts';
 import type { HarnessStore } from './harnessStore.ts';
 import { useAvatarAssetUrl, useIdentityAvatarUrl } from './HarnessIdentityAvatar.tsx';
+import { Star } from 'lucide-react';
 
-function AssetTile({ store, asset, onUse, onEdit }: { store: HarnessStore; asset: AvatarAsset; onUse: (asset: AvatarAsset) => void; onEdit?: (asset: AvatarAsset) => void }) {
+function AssetTile({ store, asset, onUse, onEdit, onFavorite, onPreview }: { store: HarnessStore; asset: AvatarAsset; onUse: (asset: AvatarAsset) => void; onEdit?: (asset: AvatarAsset) => void; onFavorite?: (asset: AvatarAsset) => void; onPreview: (asset: AvatarAsset) => void }) {
   const url = useAvatarAssetUrl(store, asset.id);
   return <article className="harness-avatar-tile">
-    <div className="harness-avatar-tile-image">{url ? <img src={url} alt=""/> : <span aria-hidden="true">✦</span>}</div>
+    <button type="button" className="harness-avatar-tile-image harness-avatar-preview-trigger" onClick={() => onPreview(asset)} aria-label={`View ${asset.title}`}>{url ? <img src={url} alt=""/> : <span aria-hidden="true">✦</span>}</button>
     <strong title={asset.title}>{asset.title}</strong>
     <small>{asset.tags.slice(0, 3).join(' · ') || asset.source}</small>
-    <div><button type="button" className="harness-secondary" onClick={() => onUse(asset)}>Use</button>{onEdit && <button type="button" className="harness-secondary" onClick={() => onEdit(asset)}>Edit</button>}</div>
+    <div><button type="button" className="harness-secondary" onClick={() => onUse(asset)}>Use</button>{onEdit && <button type="button" className="harness-secondary" onClick={() => onEdit(asset)}>Edit</button>}{onFavorite && <button type="button" className="harness-secondary harness-avatar-favorite" aria-label={asset.favorite ? `Remove ${asset.title} from favorites` : `Add ${asset.title} to favorites`} aria-pressed={!!asset.favorite} onClick={() => onFavorite(asset)}><Star size={13} fill={asset.favorite ? 'currentColor' : 'none'}/></button>}</div>
   </article>;
+}
+
+function AssetPreview({ store, asset, onClose }: { store: HarnessStore; asset: AvatarAsset; onClose: () => void }) {
+  const url = useAvatarAssetUrl(store, asset.id);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { dialog.current?.showModal(); return () => dialog.current?.close(); }, []);
+  return <dialog ref={dialog} className="harness-dialog harness-avatar-preview-dialog" onCancel={event => { event.preventDefault(); onClose(); }} onClose={onClose}>
+    <header><div><span className="harness-overline">SAVED IMAGE</span><h2>{asset.title}</h2></div><button type="button" className="harness-secondary" onClick={onClose}>Close</button></header>
+    {url && <img className="harness-avatar-preview-image" src={url} alt={asset.title}/>}
+    {asset.prompt && <p><strong>Prompt</strong> {asset.prompt}</p>}
+    {asset.collections?.length ? <p><strong>Collections</strong> {asset.collections.join(' · ')}</p> : null}
+    {asset.tags.length ? <p><strong>Tags</strong> {asset.tags.join(' · ')}</p> : null}
+    {url && <a className="harness-secondary" href={url} download={`${asset.title.replace(/[^a-z0-9-]+/gi, '-').slice(0, 64) || 'image'}.png`}>Download PNG</a>}
+  </dialog>;
 }
 
 function LegacyTile({ store, identity, onUse }: { store: HarnessStore; identity: HarnessIdentity; onUse: (identity: HarnessIdentity) => void }) {
@@ -25,7 +41,7 @@ function LegacyTile({ store, identity, onUse }: { store: HarnessStore; identity:
   </article>;
 }
 
-export function HarnessAvatarGallery({ store, assets, legacy, query, onUseAsset, onUseIdentity, onEdit }: {
+export function HarnessAvatarGallery({ store, assets, legacy, query, onUseAsset, onUseIdentity, onEdit, onFavorite }: {
   store: HarnessStore;
   assets: AvatarAsset[];
   legacy: HarnessIdentity[];
@@ -33,12 +49,15 @@ export function HarnessAvatarGallery({ store, assets, legacy, query, onUseAsset,
   onUseAsset: (asset: AvatarAsset) => void;
   onUseIdentity: (identity: HarnessIdentity) => void;
   onEdit?: (asset: AvatarAsset) => void;
+  onFavorite?: (asset: AvatarAsset) => void;
 }) {
+  const [preview, setPreview] = useState<AvatarAsset | null>(null);
   const shown = assets.filter(asset => avatarAssetMatches(asset, query));
   const legacyShown = legacy.filter(identity => `${identity.name} ${identity.focus} ${identity.icon || ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <div className="harness-avatar-gallery-grid">
-    {shown.map(asset => <AssetTile key={asset.id} store={store} asset={asset} onUse={onUseAsset} onEdit={onEdit}/>)}
+    {shown.map(asset => <AssetTile key={asset.id} store={store} asset={asset} onUse={onUseAsset} onEdit={onEdit} onFavorite={onFavorite} onPreview={setPreview}/>)}
     {legacyShown.map(identity => <LegacyTile key={identity.id} store={store} identity={identity} onUse={onUseIdentity}/>)}
     {!shown.length && !legacyShown.length && <p className="harness-muted">No saved images match.</p>}
+    {preview && <AssetPreview store={store} asset={preview} onClose={() => setPreview(null)}/>}
   </div>;
 }

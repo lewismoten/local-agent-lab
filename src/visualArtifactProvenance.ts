@@ -11,6 +11,7 @@ export type VisualArtifactDetails = {
   inferenceBackend?: string;
   source?: { name: string; origin: 'uploaded' | 'generated' | 'imported-ply' };
   settings?: unknown;
+  sourceReportPath?: string;
 };
 
 export function visualArtifactSidecarPath(artifactPath: string): string {

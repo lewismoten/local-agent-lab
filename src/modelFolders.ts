@@ -1,9 +1,11 @@
 import { MODEL_CATALOG } from './catalogModels.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 const missing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 export const modelFolderName = (name: string) => {
+  workspaceFileName(name);
   const owner = MODEL_CATALOG.find(model => model.visionProjector?.name === name);
-  return (owner?.name || name).replace(/\.gguf$/i, '');
+  return workspaceFileName((owner?.name || name).replace(/\.gguf$/i, ''));
 };
 export const modelLogicalPath = (name: string) => `models/${name}`;
 export const modelNestedPath = (name: string) => `models/${modelFolderName(name)}/${name}`;
@@ -18,6 +20,7 @@ export async function maybeModelFile(folder: FileSystemDirectoryHandle, name: st
   catch (error) { if (missing(error)) return null; throw error; }
 }
 export async function modelDownloadDirectory(folder: FileSystemDirectoryHandle, name: string) {
+  workspaceFileName(name);
   const models = await folder.getDirectoryHandle('models', { create: true });
   // Continue a flat download in place. The organizer moves it once complete.
   for (const legacyName of [name, `${name}.LICENSE.txt`, `${name}.LICENSE.html`]) {
@@ -36,6 +39,7 @@ export async function organizeFlatGgufModels(folder: FileSystemDirectoryHandle, 
   let moved = 0;
   for await (const [name, handle] of (models as FileSystemDirectoryHandle & { entries(): AsyncIterableIterator<[string, FileSystemHandle]> }).entries()) {
     if (handle.kind !== 'file' || !name.toLowerCase().endsWith('.gguf')) continue;
+    workspaceFileName(name);
     try { await models.getFileHandle(`${name}.download.json`); continue; }
     catch (error) { if (!missing(error)) throw error; }
     onProgress?.(name);

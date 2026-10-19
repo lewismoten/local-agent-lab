@@ -23,7 +23,7 @@ type VisualRecord = {
 };
 
 export type VisualWorkspaceIssue = { artifactPath: string; missingPaths: string[] };
-export type VisualWorkspaceAudit = { checkedRecords: number; withoutProvenance: number; issues: VisualWorkspaceIssue[] };
+export type VisualWorkspaceAudit = { checkedRecords: number; withoutProvenance: number; unverifiedArtifacts: string[]; issues: VisualWorkspaceIssue[] };
 
 const outputKeys = ['artifactPath', 'imagePath', 'outputPath', 'videoPath', 'depthPath', 'frameSequencePath',
   'svgPath', 'posePath', 'plyPath', 'glbPath', 'sourceImagePath'] as const;
@@ -56,6 +56,8 @@ async function jsonFiles(dir: DirectoryWithEntries, prefix: string, visualReport
 /** Scan saved visual metadata without opening model weights or changing the workspace. */
 export async function auditVisualWorkspace(root: FileSystemDirectoryHandle, signal?: AbortSignal): Promise<VisualWorkspaceAudit> {
   const candidates: { path: string; file: File }[] = [];
+  const mediaArtifacts = new Set<string>();
+  const verifiedArtifacts = new Set<string>();
   const models = await directoryAt(root, ['models']);
   if (models) {
     for await (const [name, handle] of models.entries()) {
@@ -73,7 +75,12 @@ export async function auditVisualWorkspace(root: FileSystemDirectoryHandle, sign
   }
   for (const name of ['depth', 'videos', 'frames', 'meshes', 'vectors', 'poses']) {
     const dir = await directoryAt(root, ['media', name]);
-    if (dir) candidates.push(...await jsonFiles(dir, `media/${name}`, false, name !== 'poses'));
+    if (dir) {
+      candidates.push(...await jsonFiles(dir, `media/${name}`, false, name !== 'poses'));
+      for await (const [fileName, handle] of dir.entries()) {
+        if (handle.kind === 'file' && !fileName.endsWith('.meta.json') && /\.(?:png|webm|mp4|zip|ply|glb|svg|json)$/i.test(fileName)) mediaArtifacts.add(`media/${name}/${fileName}`);
+      }
+    }
   }
 
   const issues = new Map<string, Set<string>>();
@@ -88,6 +95,8 @@ export async function auditVisualWorkspace(root: FileSystemDirectoryHandle, sign
     const paths = visualDependencyPaths(record, imageEngine);
     if (!paths.length && record.modelRequired !== false) { withoutProvenance++; continue; }
     checkedRecords++;
+    if (mediaArtifacts.has(candidate.path)) verifiedArtifacts.add(candidate.path);
+    for (const artifactPath of visualArtifactPaths(record)) if (mediaArtifacts.has(artifactPath)) verifiedArtifacts.add(artifactPath);
     const missing = await missingVisualDependencies(root, record, imageEngine);
     if (!missing.length) continue;
     for (const artifactPath of [candidate.path, ...visualArtifactPaths(record)]) {
@@ -96,7 +105,7 @@ export async function auditVisualWorkspace(root: FileSystemDirectoryHandle, sign
       issues.set(artifactPath, prior);
     }
   }
-  return { checkedRecords, withoutProvenance,
+  return { checkedRecords, withoutProvenance, unverifiedArtifacts: [...mediaArtifacts].filter(path => !verifiedArtifacts.has(path)).sort(),
     issues: [...issues].map(([artifactPath, paths]) => ({ artifactPath, missingPaths: [...paths] }))
       .sort((a, b) => a.artifactPath.localeCompare(b.artifactPath)) };
 }

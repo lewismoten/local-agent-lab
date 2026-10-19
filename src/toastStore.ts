@@ -1,4 +1,5 @@
-export type Toast = { id: number; message: string; kind: 'success' | 'error' | 'info' };
+export type ToastAction = { label: string; onClick: () => void };
+export type Toast = { id: number; message: string; kind: 'success' | 'error' | 'info'; action?: ToastAction };
 
 let toasts: Toast[] = [];
 let nextId = 0;
@@ -24,13 +25,13 @@ export function dismissToast(id: number) {
   notify();
   scheduleVisibleToasts();
 }
-export function showToast(message: string, kind: Toast['kind'] = 'success') {
-  const toast = { id: ++nextId, message, kind };
+export function showToast(message: string, kind: Toast['kind'] = 'success', action?: ToastAction) {
+  const toast = { id: ++nextId, message, kind, action };
   toasts = [...toasts, toast];
   notify();
   scheduleVisibleToasts();
   return toast.id;
 }
-export function showCompletionToast(message: string, startedAt: number, minimumMs = 2000) {
-  if (performance.now() - startedAt >= minimumMs) showToast(message);
+export function showCompletionToast(message: string, startedAt: number, minimumMs = 2000, action?: ToastAction) {
+  if (performance.now() - startedAt >= minimumMs) showToast(message, 'success', action);
 }

@@ -13,3 +13,14 @@ test('completion notifications queue when several jobs finish together', () => {
   ]);
   ids.slice(1).forEach(dismissToast);
 });
+
+test('a toast can carry a result action until it is dismissed', () => {
+  let opened = false;
+  const id = showToast('Run complete.', 'success', { label: 'Open run', onClick: () => { opened = true; } });
+  const toast = getToasts().find(item => item.id === id);
+  assert.equal(toast?.action?.label, 'Open run');
+  toast.action.onClick();
+  assert.equal(opened, true);
+  dismissToast(id);
+  assert.equal(getToasts().some(item => item.id === id), false);
+});

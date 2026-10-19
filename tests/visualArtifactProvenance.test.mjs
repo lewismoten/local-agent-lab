@@ -6,9 +6,11 @@ function memoryFolder() {
   const files = new Map();
   const directory = prefix => ({
     async getDirectoryHandle(name) { return directory(`${prefix}${name}/`); },
-    async getFileHandle(name) {
+    async getFileHandle(name, options) {
       const path = `${prefix}${name}`;
+      if (!files.has(path) && !options?.create) throw new DOMException('Missing', 'NotFoundError');
       return {
+        async getFile() { return files.get(path); },
         async createWritable() { return {
           async write(blob) { files.set(path, blob); },
           async close() {},

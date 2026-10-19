@@ -52,10 +52,13 @@ try {
   const initial = await waitFor(`(async () => {
     const { store } = await (await import('/src/harnessStore.ts')).openBrowserWorkspace();
     const assets = await store.avatarLibrary();
-    return assets.length ? { assets, active: (await store.manifest()).identities.find(item => item.id === 'ada')?.avatarPath } : false;
+    const active = (await store.manifest()).identities.find(item => item.id === 'ada')?.avatarPath;
+    return assets.length && active ? { assets, active } : false;
   })()`, 'saved avatar asset');
   if (initial.assets.length !== 1 || initial.assets[0].source !== 'uploaded' || !initial.active) throw new Error(`Upload did not create a reusable asset: ${JSON.stringify(initial)}`);
+  await evaluate("location.hash = '/images'; true");
   await waitFor("!!document.querySelector('.harness-avatar-library .harness-avatar-tile button')", 'gallery tile');
+  await waitFor("[...document.querySelectorAll('select[aria-label=\"Image use\"] option')].some(option => option.value === 'Avatars')", 'avatar use category');
   await evaluate("document.querySelector('.harness-avatar-library .harness-avatar-tile button:nth-child(2)').click(); true");
   await waitFor("!!document.querySelector('.harness-avatar-asset-dialog[open]')", 'asset editor');
   await evaluate(`(() => {
@@ -69,7 +72,7 @@ try {
   })()`);
   await waitFor("!document.querySelector('.harness-avatar-asset-dialog[open]')", 'saved labels');
   await evaluate(`(() => {
-    const input = document.querySelector('input[aria-label="Search saved avatars"]');
+    const input = document.querySelector('input[aria-label="Search saved images"]');
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'robot');
     input.dispatchEvent(new Event('input', { bubbles: true })); return true;
   })()`);
@@ -95,9 +98,10 @@ try {
     const first = await store.identityAvatar('ada'), second = await store.identityAvatar(nova.id);
     const original = first ? new Uint8Array(await first.arrayBuffer()) : null;
     const copy = second ? new Uint8Array(await second.arrayBuffer()) : null;
+    const assets = await store.avatarLibrary();
     return { same: !!original && !!copy && original.length === copy.length && original.every((byte, index) => byte === copy[index]),
-      assetCount: (await store.avatarLibrary()).length };
+      assetCount: assets.length, linked: nova.avatarAssetId === assets[0]?.id };
   })()`, 'reused image');
-  if (!reused.same || reused.assetCount !== 1) throw new Error(`Avatar reuse failed: ${JSON.stringify(reused)}`);
+  if (!reused.same || reused.assetCount !== 1 || !reused.linked) throw new Error(`Avatar reuse failed: ${JSON.stringify(reused)}`);
   console.log('Avatar gallery passed: upload, catalog, labels, tag search, and reuse in another identity without duplicate assets.');
 } finally { socket.close(); }

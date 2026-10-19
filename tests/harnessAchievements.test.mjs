@@ -134,18 +134,19 @@ test('saved chat and diagnostics update milestones without rescanning, and repea
 
 test('successful image generation emits one achievement event; failed generation emits none', async () => {
   const { generateImage, setImageGeneratedRecorder } = await import('../src/imageGeneration.ts');
+  const { readFile } = await import('node:fs/promises');
   const originalFetch = globalThis.fetch;
-  let events = 0;
-  const release = setImageGeneratedRecorder(async () => { events++; });
+  const events = [];
+  const release = setImageGeneratedRecorder(async (image, request) => { events.push({ bytes: image.size, request }); });
   const config = { preset: 'tiny-sd', provider: 'compatible', endpoint: 'https://image-test.invalid/v1', model: 'test', apiKey: '' };
   try {
-    globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ b64_json: 'AQID' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const png = await readFile(new URL('../docs/logo-256.png', import.meta.url));
+    globalThis.fetch = async () => new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }), { status: 200, headers: { 'content-type': 'application/json' } });
     const image = await generateImage(config, 'A leaf');
-    assert.equal(image.size, 3);
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(events, 1);
+    assert.equal(image.size, png.length);
+    assert.deepEqual(events, [{ bytes: png.length, request: { model: 'test', provider: 'compatible', prompt: 'A leaf' } }]);
     globalThis.fetch = async () => new Response('failed', { status: 500 });
     await assert.rejects(generateImage(config, 'A leaf'), /Image request failed/);
-    assert.equal(events, 1);
+    assert.equal(events.length, 1);
   } finally { release(); globalThis.fetch = originalFetch; }
 });

@@ -88,6 +88,7 @@ export type HarnessIdentity = {
   instructions: string;
   icon?: 'person' | 'robot' | 'code' | 'brain' | 'compass' | 'shield' | 'spark';
   avatarPath?: string;
+  avatarAssetId?: string;
   createdAt: string;
   updatedAt: string;
 };

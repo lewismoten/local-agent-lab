@@ -1,3 +1,5 @@
+import { workspacePathParts } from './workspacePath.ts';
+
 export type Format = 'Children’s book' | 'Children’s series' | 'Short story' | 'Novel' | 'Trilogy' | 'Series';
 export type Stage = 'outline' | 'summary' | 'draft';
 export type Entity = { id: string; updatedAt: string };
@@ -112,6 +114,7 @@ export function reconcileChanges(previous: Project, next: Project): Project {
   return next;
 }
 export function projectFiles(project: Project): Record<string, string> {
+  assertProjectWorkspacePaths(project);
   const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
   const files: Record<string, string> = {
     'project.json': json({
@@ -139,8 +142,23 @@ export function projectFiles(project: Project): Record<string, string> {
       files[`books/${book.id}/chapters/${ch.id}.json`] = json(ch);
     });
   });
+  Object.keys(files).forEach(workspacePathParts);
   return files;
 }
+
+export function assertProjectWorkspacePaths(project: Project): void {
+  if (!Array.isArray(project.sources) || !Array.isArray(project.characters))
+    throw new TypeError('Project sources and characters must be lists.');
+  for (const source of project.sources) {
+    if (typeof source?.path !== 'string') throw new TypeError('Source file paths must be workspace-relative strings.');
+    if (source.path) workspacePathParts(source.path);
+  }
+  for (const character of project.characters) {
+    if (!Array.isArray(character?.imagePaths)) throw new TypeError('Character image paths must be a list of workspace-relative paths.');
+    character.imagePaths.forEach(workspacePathParts);
+  }
+}
+
 export function parseProjectFiles(files: Record<string, string>): Project {
   const meta = JSON.parse(files['project.json'] || '{}');
   if (meta.schemaVersion !== 1 || typeof meta.title !== 'string') throw new Error('This folder needs a valid version 1 project.json.');
@@ -163,8 +181,10 @@ export function parseProjectFiles(files: Record<string, string>): Project {
         return JSON.parse(text) as Chapter;
       }) || [],
     }));
-  return {
+  const project = {
     ...meta, genres: meta.genres || [], characters, world, influences,
     sources, reviews, storyGraph, books: books.sort((a, b) => a.position - b.position),
   } as Project;
+  assertProjectWorkspacePaths(project);
+  return project;
 }

@@ -67,7 +67,7 @@ export const MOTION_MODEL_SPECS: Record<MotionModel, VisualModelSpec> = {
     backends: ['WebGPU', 'WASM fallback'],
   },
   pose: {
-    task: 'Body pose detection',
+    task: 'Body pose detection and tracking, not generation',
     inputs: ['Image or video frames'],
     outputs: ['33 body landmarks per detected pose', 'Overlay'],
     dimensions: 'Uses source frame dimensions',

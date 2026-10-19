@@ -2,6 +2,7 @@ import { unloadLocalOllama } from './localOllama.ts';
 import { withLocalModelMemory } from './localModelMemory.ts';
 import type { BrowserImagePreview } from './browserImage.ts';
 import type { BrowserImageModelGroup } from './browserImageAssets.ts';
+import { showToast } from './toastStore.ts';
 
 export type ImageProvider = 'openai' | 'bonsai' | 'compatible' | 'browser';
 export type ImagePreset = 'none' | 'openai' | 'bonsai' | 'tiny-sd' | 'small-sd' | 'pixart-delta' | 'browser-sd15' | 'browser-tiny-q4' | 'browser-tiny-fp16' | 'browser-sdxs' | 'browser-lcm' | 'browser-supra-mobile';
@@ -29,7 +30,8 @@ export function imageConfigured(config: ImageConfig) {
   return config.preset !== 'none' && (config.provider === 'browser' || !!config.endpoint.trim() && !!config.model.trim() && (config.provider !== 'openai' || !!config.apiKey));
 }
 
-type ImageGeneratedRecorder = () => Promise<void>;
+export type ImageGenerationRecord = { model: string; provider: ImageProvider; prompt: string };
+type ImageGeneratedRecorder = (image: Blob, request: ImageGenerationRecord) => Promise<void>;
 const imageRecorderHost = globalThis as typeof globalThis & { __localAgentLabImageRecorder?: ImageGeneratedRecorder };
 /** The active harness captures its workspace before an image request begins. */
 export function setImageGeneratedRecorder(recorder: ImageGeneratedRecorder | null): () => void {
@@ -54,7 +56,13 @@ function imageBlobFromBase64(encoded: string): Blob {
 export async function generateImage(config: ImageConfig, prompt: string, signal?: AbortSignal, onProgress?: (message: string) => void, onPreview?: (value: BrowserImagePreview) => void, workspace?: FileSystemDirectoryHandle | null, onStep?: (step: number, totalSteps: number) => void, seed?: number): Promise<Blob> {
   const recorder = imageRecorderHost.__localAgentLabImageRecorder;
   const result = await generateImageImpl(config, prompt, signal, onProgress, onPreview, workspace, onStep, seed);
-  if (recorder) void recorder().catch(error => console.warn('Image generated; achievement progress will update when Achievements opens:', error));
+  if (recorder) {
+    try { await recorder(result, { model: config.model, provider: config.provider, prompt }); }
+    catch (error) {
+      console.warn('Image generated but could not be saved to the image library:', error);
+      showToast('Image created, but could not be saved to Images.', 'error');
+    }
+  }
   return result;
 }
 

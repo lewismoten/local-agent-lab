@@ -2,6 +2,14 @@
 .toast-stack .toast{position:static;max-width:100%;width:100%;justify-content:flex-start}
 .toast-stack .toast span{flex:1;line-height:1.4}
 .toast-stack .toast button{margin-left:auto}
+.toast-stack .toast{flex-wrap:wrap}
+.toast-stack .toast .toast-action{margin-left:0;padding:2px 0;color:#d6fff6;font-size:12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.toast-stack .toast .toast-action:hover,.toast-stack .toast .toast-action:focus-visible{color:#fff}
+.toast-stack .toast .toast-dismiss{margin-left:auto}
 .toast-stack .toast-error{background:#a83d37}
 .toast-stack .toast-info{background:#456477}
+.toast-image-preview{width:min(900px,calc(100vw - 24px));max-height:90dvh;padding:16px;overflow:auto;color:var(--h-text);background:var(--h-panel);border:1px solid var(--h-line)}
+.toast-image-preview header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.toast-image-preview h2{margin:0;font-size:18px;overflow-wrap:anywhere}
+.toast-image-preview img{display:block;width:auto;max-width:100%;max-height:calc(90dvh - 100px);margin:auto;object-fit:contain}
 @media(max-width:720px){.toast-stack{right:16px;bottom:16px}}

@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { modelDownloadManager } from './modelDownloadSession.ts';
 import { showToast } from './toastStore.ts';
 import { VISUAL_PACKAGE_LIMIT_BYTES, visualPackageLimitMessage } from './visualLimit.ts';
+import { workspaceFileName } from './workspacePath.ts';
 
 type Asset = { name: string; url: string; bytes: number; sha256: string; label: string };
 const PREVIOUS_ONNX_SCRIPT = { name: 'ort.webgpu.min.js', bytes: 357648, sha256: '4dec2f5e74de2ec0f496d39ef55ec23762e8c6ca58cb958e691c9f2350a7b1c8' };
@@ -110,12 +111,18 @@ export const browserImageLicenseLinks = (group: BrowserImageModelGroup) => group
 export const browserImageAssets = (group: Group): readonly Asset[] => group === 'engine' ? BROWSER_IMAGE_ENGINE_ASSETS : group === 'model' ? BROWSER_IMAGE_MODEL_ASSETS : group === 'tiny-q4' ? BROWSER_TINY_Q4_ASSETS : group === 'tiny-fp16' ? BROWSER_TINY_FP16_ASSETS : group === 'sdxs' ? BROWSER_SDXS_ASSETS : group === 'lcm' ? BROWSER_LCM_ASSETS : BROWSER_SUPRA_ASSETS;
 const assets = browserImageAssets;
 export const browserImageTotal = (group: Group) => assets(group).reduce((sum, item) => sum + item.bytes, 0);
+export const imagePackageCanOverride = (group: BrowserImageModelGroup) => group === 'model';
+const oversizeApproved = new WeakMap<FileSystemDirectoryHandle, Set<Group>>();
+function approvedFor(folder: FileSystemDirectoryHandle, group: Group) {
+  return oversizeApproved.get(folder)?.has(group) ?? false;
+}
 export async function browserImageDirectory(folder: FileSystemDirectoryHandle, group: Group, create = false) {
   const parent = await folder.getDirectoryHandle(group === 'engine' ? 'engines' : 'models', { create });
   return parent.getDirectoryHandle(group === 'engine' ? 'ONNX-Image' : BROWSER_IMAGE_MODEL_PATHS[group].slice('models/'.length), { create });
 }
 const missing = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
 async function maybeFile(dir: FileSystemDirectoryHandle, name: string): Promise<File | null> {
+  workspaceFileName(name);
   try { return await (await dir.getFileHandle(name)).getFile(); } catch (error) { if (missing(error)) return null; throw error; }
 }
 async function digest(file: Blob, onProgress?: (bytes: number) => void) {
@@ -145,6 +152,7 @@ async function verified(dir: FileSystemDirectoryHandle, asset: Asset) {
   return file;
 }
 async function writeText(dir: FileSystemDirectoryHandle, name: string, text: string) {
+  workspaceFileName(name);
   const writer = await (await dir.getFileHandle(name, { create: true })).createWritable();
   await writer.write(text); await writer.close();
 }
@@ -241,7 +249,7 @@ function startNext(folder: FileSystemDirectoryHandle) {
   const [group, ...queue] = state.queue;
   if (group !== 'engine') {
     const packageBytes = browserImageTotal(group) + browserImageTotal('engine');
-    if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES) {
+    if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES && !approvedFor(folder, group)) {
       const error = visualPackageLimitMessage(browserImageModelLabel(group), packageBytes);
       publish({ queue, error, revision: state.revision + 1 });
       showToast(error, 'error');
@@ -310,12 +318,19 @@ export const browserImageAssetsManager = {
     try { await promise; }
     finally { if (discovery?.promise === promise) discovery = null; }
   },
-  queue(folder: FileSystemDirectoryHandle, group: Group) {
+  queue(folder: FileSystemDirectoryHandle, group: Group, allowOversize = false) {
     if (state.folder && state.folder !== folder && task) throw new Error('An image download is active in another workspace.');
     if (state.folder === folder && (state.installed[group] || state.active === group || state.queue.includes(group))) return;
     if (group !== 'engine') {
       const packageBytes = browserImageTotal(group) + browserImageTotal('engine');
-      if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES) throw new Error(visualPackageLimitMessage(browserImageModelLabel(group), packageBytes));
+      if (packageBytes > VISUAL_PACKAGE_LIMIT_BYTES) {
+        if (!imagePackageCanOverride(group) || !allowOversize && !approvedFor(folder, group)) throw new Error(visualPackageLimitMessage(browserImageModelLabel(group), packageBytes));
+        if (allowOversize) {
+          const approved = oversizeApproved.get(folder) ?? new Set<Group>();
+          approved.add(group);
+          oversizeApproved.set(folder, approved);
+        }
+      }
     }
     publish({ folder, queue: [...(state.folder === folder ? state.queue : []), group], paused: state.folder === folder && state.paused });
     startNext(folder);

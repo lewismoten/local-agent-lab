@@ -1,5 +1,7 @@
 import type { AIConfig } from './ai.ts';
 import type { ImageConfig } from './imageGeneration.ts';
+import { cleanThemeId, type ThemeId } from './themeOptions.ts';
+import { cleanCustomThemes, type CustomTheme } from './customTheme.ts';
 
 export type WorkspaceSettings = {
   version: 1;
@@ -7,6 +9,8 @@ export type WorkspaceSettings = {
   selectedProfileId: string;
   imageConfig: ImageConfig;
   compactionAt: number;
+  themeId: ThemeId;
+  customThemes: CustomTheme[];
 };
 
 export const DEFAULT_COMPACTION_AT = 86;
@@ -31,15 +35,19 @@ export function cleanWorkspaceSettings(value: unknown): WorkspaceSettings | null
   const imageConfig = image && typeof image === 'object' && typeof image.preset === 'string'
     ? { ...image, apiKey: '' }
     : { preset: 'none', provider: 'compatible', endpoint: '', model: '', apiKey: '' } as ImageConfig;
-  return { version: 1, profiles, selectedProfileId, imageConfig, compactionAt: cleanCompactionAt(saved.compactionAt) };
+  const customThemes = cleanCustomThemes(saved.customThemes);
+  return { version: 1, profiles, selectedProfileId, imageConfig, compactionAt: cleanCompactionAt(saved.compactionAt), themeId: cleanThemeId(saved.themeId, customThemes), customThemes };
 }
 
-export function workspaceSettings(profiles: AIConfig[], selectedProfileId: string, imageConfig: ImageConfig, compactionAt = DEFAULT_COMPACTION_AT): WorkspaceSettings {
+export function workspaceSettings(profiles: AIConfig[], selectedProfileId: string, imageConfig: ImageConfig, compactionAt = DEFAULT_COMPACTION_AT, themeId: ThemeId = 'cyberpunk', customThemes: CustomTheme[] = []): WorkspaceSettings {
+  const cleanedThemes = cleanCustomThemes(customThemes);
   return {
     version: 1,
     profiles: profiles.map(profile => ({ ...profile, apiKey: '' })),
     selectedProfileId,
     imageConfig: { ...imageConfig, apiKey: '' },
     compactionAt: cleanCompactionAt(compactionAt),
+    themeId: cleanThemeId(themeId, cleanedThemes),
+    customThemes: cleanedThemes,
   };
 }
